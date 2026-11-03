@@ -8,7 +8,7 @@ import prisma from '../lib/prisma.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const uploadsDir = path.join(__dirname, '../uploads');
+const uploadsDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.UPLOADS_DIR || path.join(__dirname, '../uploads');
 
 const router = express.Router();
 
@@ -250,25 +250,38 @@ router.get('/documents', async (req, res) => {
   } catch (error) { handleError(res, error); }
 });
 
+// Guarda un archivo base64 (data URL) en el directorio de uploads y devuelve su URL relativa
+const saveBase64File = (fileData, name) => {
+  const matches = fileData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  if (!matches || matches.length !== 3) return null;
+  const buffer = Buffer.from(matches[2], 'base64');
+  const safeName = (name || 'file').replace(/[^a-zA-Z0-9.-]/g, '_');
+  const fileName = `${Date.now()}-${safeName}`;
+  fs.writeFileSync(path.join(uploadsDir, fileName), buffer);
+  return { url: `/uploads/${fileName}`, size: buffer.length };
+};
+
+// Borra un archivo local de uploads a partir de su URL (absoluta o relativa)
+const deleteUploadedFile = (fileUrl) => {
+  if (!fileUrl || !fileUrl.includes('/uploads/')) return;
+  const fileName = path.basename(fileUrl.split('/uploads/')[1] || '');
+  if (!fileName) return;
+  const filePath = path.join(uploadsDir, fileName);
+  try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (e) { console.error('Could not delete file', e); }
+};
+
 router.post('/documents', async (req, res) => {
   try {
-    const { name, category, size, fileUrl, type, fileData } = req.body;
+    const { name, category, size, fileUrl, type, fileData, invoiceData } = req.body;
     let finalFileUrl = fileUrl || null;
+    let finalSize = parseInt(size) || 0;
 
     if (fileData) {
-      const matches = fileData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-      if (matches && matches.length === 3) {
-        const buffer = Buffer.from(matches[2], 'base64');
-        const safeName = name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const fileName = `${Date.now()}-${safeName}`;
-        const filePath = path.join(uploadsDir, fileName);
-        
-        fs.writeFileSync(filePath, buffer);
-        
-        // Generate public URL
-        const host = req.get('host');
-        const protocol = host.includes('localhost') ? 'http' : 'https';
-        finalFileUrl = `${protocol}://${host}/uploads/${fileName}`;
+      const saved = saveBase64File(fileData, name);
+      if (saved) {
+        // URL relativa: funciona con cualquier dominio
+        finalFileUrl = saved.url;
+        finalSize = finalSize || saved.size;
       }
     }
 
@@ -277,11 +290,42 @@ router.post('/documents', async (req, res) => {
         name: name || 'Untitled',
         category: category || 'General',
         type: type || null,
-        size: parseInt(size) || 0,
+        size: finalSize,
         fileUrl: finalFileUrl,
+        invoiceData: invoiceData ?? undefined,
         userId: req.user.ownerId
       }
     });
+    res.json(doc);
+  } catch (error) { handleError(res, error); }
+});
+
+// Editar documento: renombrar y/o reemplazar el archivo (ej. factura editada).
+// Mantiene el mismo ID, así que sigue siendo "la misma factura".
+router.put('/documents/:id', async (req, res) => {
+  try {
+    const existing = await prisma.document.findFirst({
+      where: { id: req.params.id, userId: req.user.ownerId }
+    });
+    if (!existing) return res.status(404).json({ error: 'Documento no encontrado' });
+
+    const { name, category, fileData, size, invoiceData } = req.body;
+    const data = {};
+    if (typeof name === 'string' && name.trim()) data.name = name.trim();
+    if (typeof category === 'string' && category.trim()) data.category = category.trim();
+    if (invoiceData !== undefined) data.invoiceData = invoiceData;
+
+    if (fileData) {
+      const saved = saveBase64File(fileData, data.name || existing.name);
+      if (saved) {
+        data.fileUrl = saved.url;
+        data.size = parseInt(size) || saved.size;
+        // Eliminar el PDF anterior para no dejar archivos huérfanos en el volumen
+        deleteUploadedFile(existing.fileUrl);
+      }
+    }
+
+    const doc = await prisma.document.update({ where: { id: existing.id }, data });
     res.json(doc);
   } catch (error) { handleError(res, error); }
 });

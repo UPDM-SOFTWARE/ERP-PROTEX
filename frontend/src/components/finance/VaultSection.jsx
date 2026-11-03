@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FolderLock, UploadCloud, Search, FileText, Image as ImageIcon, 
   Trash2, Eye, Download, X, File, AlertCircle, CheckCircle2,
-  Edit2, Save
+  Edit2, Save, FileEdit
 } from 'lucide-react';
 import { useFinance } from '../../context/FinanceContext';
 
-export function VaultSection({ title }) {
-  const { documents, addDocument, deleteDocument, updateDocument } = useFinance();
+export function VaultSection({ title, onNavigate }) {
+  const { documents, addDocument, deleteDocument, updateDocument, startEditingInvoice } = useFinance();
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState('All'); // 'All', 'Created Invoices', 'Scanned', 'Other'
   
@@ -38,6 +38,30 @@ export function VaultSection({ title }) {
     if (lowerName.includes('factura') || lowerName.includes('invoice')) return 'Created Invoices';
     if (lowerName.includes('ticket') || lowerName.includes('recibo') || lowerName.includes('scan')) return 'Scanned';
     return 'Other';
+  };
+
+  const resolveFileUrl = (url) => {
+    if (!url) return '';
+    if (url.includes('/uploads/')) {
+      return '/uploads/' + url.split('/uploads/')[1];
+    }
+    return url;
+  };
+
+  const isInvoiceDocument = (doc) => {
+    if (!doc) return false;
+    if (doc.invoiceData) return true;
+    const cat = (doc.category || '').toLowerCase();
+    const name = (doc.name || '').toLowerCase();
+    return cat === 'invoice' || cat === 'factura' || cat === 'created invoices' || name.startsWith('invoice_') || name.includes('invoice');
+  };
+
+  const handleEditInvoice = (doc) => {
+    if (!doc) return;
+    startEditingInvoice(doc);
+    if (onNavigate) {
+      onNavigate('billing');
+    }
   };
 
   const handleFileUpload = (e) => {
@@ -245,13 +269,22 @@ export function VaultSection({ title }) {
                     </button>
                     {(doc.fileUrl || doc.url) && (
                       <a 
-                        href={doc.fileUrl || doc.url} 
+                        href={resolveFileUrl(doc.fileUrl || doc.url)} 
                         download={doc.name}
                         className="p-1.5 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors flex items-center justify-center"
                         title="Download"
                       >
                         <Download size={14} />
                       </a>
+                    )}
+                    {isInvoiceDocument(doc) && (
+                      <button 
+                        onClick={() => handleEditInvoice(doc)}
+                        className="p-1.5 rounded-md text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                        title="Edit Invoice Details"
+                      >
+                        <FileEdit size={14} />
+                      </button>
                     )}
                     <button 
                       onClick={() => startEditing(doc)}
@@ -414,9 +447,23 @@ export function VaultSection({ title }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {isInvoiceDocument(previewDoc) && (
+                    <button 
+                      onClick={() => {
+                        const target = previewDoc;
+                        setPreviewDoc(null);
+                        handleEditInvoice(target);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-indigo-700 bg-indigo-50 hover:bg-indigo-100 transition-colors border border-indigo-200 text-xs font-semibold shadow-sm"
+                      title="Edit Invoice Details"
+                    >
+                      <FileEdit size={15} />
+                      <span>Edit Invoice</span>
+                    </button>
+                  )}
                   {(previewDoc.fileUrl || previewDoc.url) && (
                     <a 
-                      href={previewDoc.fileUrl || previewDoc.url} 
+                      href={resolveFileUrl(previewDoc.fileUrl || previewDoc.url)} 
                       download={previewDoc.name}
                       className="p-2 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 transition-colors border border-transparent hover:border-indigo-100"
                       title="Download"
@@ -437,13 +484,13 @@ export function VaultSection({ title }) {
                 {(previewDoc.fileUrl || previewDoc.url) ? (
                   previewDoc.type === 'application/pdf' ? (
                     <iframe 
-                      src={previewDoc.fileUrl || previewDoc.url} 
+                      src={resolveFileUrl(previewDoc.fileUrl || previewDoc.url)} 
                       className="w-full h-full rounded-xl bg-white shadow-sm border border-slate-200"
                       title={previewDoc.name}
                     />
                   ) : previewDoc.type?.startsWith('image/') ? (
                     <img 
-                      src={previewDoc.fileUrl || previewDoc.url} 
+                      src={resolveFileUrl(previewDoc.fileUrl || previewDoc.url)} 
                       alt={previewDoc.name}
                       className="max-w-full max-h-full object-contain rounded-xl shadow-sm border border-slate-200 bg-white"
                     />
@@ -452,7 +499,7 @@ export function VaultSection({ title }) {
                       <AlertCircle size={48} className="text-amber-500" />
                       <p className="font-medium">Preview not available for this format.</p>
                       <a 
-                        href={previewDoc.fileUrl || previewDoc.url} 
+                        href={resolveFileUrl(previewDoc.fileUrl || previewDoc.url)} 
                         download={previewDoc.name}
                         className="px-6 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl transition-colors shadow-sm"
                       >

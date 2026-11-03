@@ -396,7 +396,7 @@ export function BentoLayout() {
 
               {/* Contenido */}
               <div className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
-                {React.createElement(selected.component, { title: selected.title })}
+                {React.createElement(selected.component, { title: selected.title, onNavigate: (id) => setSelectedId(id) })}
               </div>
             </motion.div>
 

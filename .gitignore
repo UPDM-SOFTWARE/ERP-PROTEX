@@ -17,4 +17,6 @@ frontend/.env
 backend/uploads/
 *.log
 .DS_Store
+database_backup.json
+dump.js
 

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Document, Page, Text, View, StyleSheet, PDFViewer, PDFDownloadLink, Image as PdfImage, pdf } from '@react-pdf/renderer';
+import React, { useState, useEffect } from 'react';
+import { Document, Page, Text, View, StyleSheet, PDFViewer, PDFDownloadLink, Image as PdfImage, pdf, Font } from '@react-pdf/renderer';
 import { Plus, Trash2, Upload, Download, FileText, Eye, Settings, ImageIcon, CheckCircle2, LayoutTemplate, ArrowRight, FolderLock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useFinance } from '../../context/FinanceContext';
@@ -9,52 +9,89 @@ import LogoCarribean from '../../assets/carribeanenergysolutionslogo.png';
 import LogoInfiniguard from '../../assets/infiniguardlogo.png';
 import LogoProtex from '../../assets/protexlogo.png';
 
+// --- HYPHENATION ---
+// Evita que react-pdf corte palabras con guiones ("in-dustrial").
+// Solo parte palabras extremadamente largas (URLs, códigos) para que no se salgan de la columna.
+Font.registerHyphenationCallback((word) => {
+  if (word.length <= 24) return [word];
+  const chunks = [];
+  for (let i = 0; i < word.length; i += 12) chunks.push(word.slice(i, i + 12));
+  return chunks;
+});
+
 // --- STANDARD STYLES ---
+// Diseñado para soportar contenido largo: el footer es fijo con espacio reservado,
+// las filas cortas no se parten entre páginas y los totales siempre quedan juntos.
+const PAGE_H_PADDING = 40;
+const FOOTER_SPACE = 70;
+
 const stdStyles = StyleSheet.create({
-  page: { padding: 40, fontFamily: 'Helvetica', backgroundColor: '#ffffff' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 40 },
-  logoSection: { width: '40%' },
-  logo: { width: 100, height: 'auto', marginBottom: 10 },
-  companyName: { fontSize: 20, fontWeight: 'bold', color: '#111827', marginBottom: 4 },
-  companyDetails: { fontSize: 10, color: '#4b5563', lineHeight: 1.5 },
-  invoiceTitleSection: { width: '50%', alignItems: 'flex-end' },
-  title: { fontSize: 32, fontWeight: 'bold', color: '#111827', letterSpacing: 1, marginBottom: 10 },
-  invoiceMeta: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4 },
-  metaLabel: { fontSize: 10, color: '#6b7280', width: 60, textAlign: 'right', paddingRight: 8 },
-  metaValue: { fontSize: 10, color: '#111827', fontWeight: 'bold', width: 80, textAlign: 'right' },
-  billToSection: { marginBottom: 40 },
-  billToLabel: { fontSize: 10, color: '#6b7280', textTransform: 'uppercase', marginBottom: 6 },
-  clientName: { fontSize: 14, fontWeight: 'bold', color: '#111827', marginBottom: 4 },
-  clientDetails: { fontSize: 10, color: '#4b5563', lineHeight: 1.5 },
-  table: { width: '100%', marginBottom: 30 },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#f3f4f6', padding: 8, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
-  thDesc: { width: '50%', fontSize: 10, fontWeight: 'bold', color: '#374151' },
-  thQty: { width: '15%', fontSize: 10, fontWeight: 'bold', color: '#374151', textAlign: 'center' },
-  thPrice: { width: '20%', fontSize: 10, fontWeight: 'bold', color: '#374151', textAlign: 'right' },
-  thTotal: { width: '15%', fontSize: 10, fontWeight: 'bold', color: '#374151', textAlign: 'right' },
-  tableRow: { flexDirection: 'row', padding: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
-  tdDesc: { width: '50%', fontSize: 10, color: '#111827' },
-  tdQty: { width: '15%', fontSize: 10, color: '#4b5563', textAlign: 'center' },
-  tdPrice: { width: '20%', fontSize: 10, color: '#4b5563', textAlign: 'right' },
-  tdTotal: { width: '15%', fontSize: 10, color: '#111827', textAlign: 'right', fontWeight: 'bold' },
-  totalsSection: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10 },
-  totalsBlock: { width: '40%' },
+  page: {
+    paddingTop: 40,
+    paddingBottom: FOOTER_SPACE,
+    paddingHorizontal: PAGE_H_PADDING,
+    fontFamily: 'Helvetica',
+    backgroundColor: '#ffffff'
+  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 30 },
+  logoSection: { width: '58%', paddingRight: 16 },
+  logo: { width: 95, maxHeight: 95, objectFit: 'contain', marginBottom: 12 },
+  companyName: { fontSize: 18, fontWeight: 'bold', color: '#111827', marginBottom: 6, lineHeight: 1.2 },
+  companyDetails: { fontSize: 9.5, color: '#4b5563', lineHeight: 1.5 },
+  invoiceTitleSection: { width: '42%', alignItems: 'flex-end' },
+  title: { fontSize: 30, fontWeight: 'bold', color: '#111827', letterSpacing: 1, marginBottom: 12 },
+  invoiceMeta: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-start', marginBottom: 5, width: '100%' },
+  metaLabel: { fontSize: 9, color: '#6b7280', width: 70, textAlign: 'right', paddingRight: 10, paddingTop: 1 },
+  metaValueWrap: { flexDirection: 'column', alignItems: 'flex-end', maxWidth: 140 },
+  metaValue: { fontSize: 10, color: '#111827', fontWeight: 'bold', textAlign: 'right' },
+  metaSubtext: { fontSize: 8, color: '#6b7280', textAlign: 'right', marginTop: 2 },
+
+  billToSection: { marginBottom: 28 },
+  billToLabel: { fontSize: 9, color: '#6b7280', textTransform: 'uppercase', marginBottom: 6, letterSpacing: 0.5 },
+  clientName: { fontSize: 13, fontWeight: 'bold', color: '#111827', marginBottom: 4, lineHeight: 1.3 },
+  clientDetails: { fontSize: 9.5, color: '#4b5563', lineHeight: 1.5 },
+  attnLabel: { fontSize: 9.5, color: '#111827', fontWeight: 'bold' },
+  attnValue: { fontSize: 9.5, color: '#111827', marginTop: 2, lineHeight: 1.4 },
+
+  table: { width: '100%', marginBottom: 20 },
+  tableHeader: { flexDirection: 'row', backgroundColor: '#f3f4f6', paddingVertical: 8, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  thDesc: { width: '52%', fontSize: 9.5, fontWeight: 'bold', color: '#374151', paddingRight: 10 },
+  thQty: { width: '12%', fontSize: 9.5, fontWeight: 'bold', color: '#374151', textAlign: 'center' },
+  thPrice: { width: '18%', fontSize: 9.5, fontWeight: 'bold', color: '#374151', textAlign: 'right' },
+  thTotal: { width: '18%', fontSize: 9.5, fontWeight: 'bold', color: '#374151', textAlign: 'right' },
+  tableRow: { flexDirection: 'row', paddingVertical: 9, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+  tdDesc: { width: '52%', fontSize: 9.5, color: '#111827', lineHeight: 1.4, paddingRight: 10 },
+  tdQtyWrap: { width: '12%', alignItems: 'center' },
+  tdQty: { fontSize: 9.5, color: '#4b5563', textAlign: 'center' },
+  tdUnit: { fontSize: 7.5, color: '#9ca3af', textAlign: 'center', marginTop: 2 },
+  tdPrice: { width: '18%', fontSize: 9.5, color: '#4b5563', textAlign: 'right' },
+  tdTotal: { width: '18%', fontSize: 9.5, color: '#111827', textAlign: 'right', fontWeight: 'bold' },
+
+  totalsSection: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 6 },
+  totalsBlock: { width: '45%' },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  totalLabel: { fontSize: 10, color: '#6b7280' },
-  totalValue: { fontSize: 10, color: '#111827' },
-  grandTotalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, marginTop: 4, borderTopWidth: 1, borderTopColor: '#e5e7eb' },
+  totalLabel: { fontSize: 9.5, color: '#6b7280' },
+  totalValue: { fontSize: 9.5, color: '#111827' },
+  grandTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, marginTop: 4, borderTopWidth: 1, borderTopColor: '#e5e7eb' },
   grandTotalLabel: { fontSize: 12, fontWeight: 'bold', color: '#111827' },
   grandTotalValue: { fontSize: 12, fontWeight: 'bold', color: '#10b981' },
-  footer: { position: 'absolute', bottom: 40, left: 40, right: 40, borderTopWidth: 1, borderTopColor: '#e5e7eb', paddingTop: 10 },
-  footerText: { fontSize: 9, color: '#9ca3af', textAlign: 'center' }
+
+  notesSection: { marginTop: 24 },
+  notesTitle: { fontSize: 9, color: '#6b7280', textTransform: 'uppercase', marginBottom: 4, letterSpacing: 0.5 },
+  notesText: { fontSize: 9.5, color: '#374151', lineHeight: 1.5 },
+
+  footer: { position: 'absolute', bottom: 25, left: PAGE_H_PADDING, right: PAGE_H_PADDING, borderTopWidth: 1, borderTopColor: '#e5e7eb', paddingTop: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  footerText: { fontSize: 8.5, color: '#9ca3af', textAlign: 'center', flex: 1 },
+  pageNumber: { fontSize: 8, color: '#9ca3af', width: 60, textAlign: 'right' },
+  footerSpacer: { width: 60 }
 });
 
 // --- INFINIGUARD STYLES ---
 const infStyles = StyleSheet.create({
-  page: { padding: 40, fontFamily: 'Helvetica', backgroundColor: '#ffffff' },
+  page: { paddingTop: 40, paddingBottom: 75, paddingHorizontal: 40, fontFamily: 'Helvetica', backgroundColor: '#ffffff' },
   header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   logoSection: { width: '55%' },
-  logo: { width: 140, height: 'auto', marginBottom: 10 },
+  logo: { width: 140, maxHeight: 90, objectFit: 'contain', marginBottom: 10 },
   companyName: { fontSize: 10, fontWeight: 'bold', color: '#333', marginBottom: 2 },
   companyDetails: { fontSize: 9, color: '#333', lineHeight: 1.4 },
   tagline: { fontSize: 9, color: '#333', marginTop: 15, marginBottom: 20 },
@@ -105,102 +142,143 @@ const infStyles = StyleSheet.create({
   notesTitle: { fontSize: 10, color: '#333', marginBottom: 4 },
   notesText: { fontSize: 9, color: '#333', lineHeight: 1.4 },
 
-  termsSection: { position: 'absolute', bottom: 40, left: 40, right: 40 },
+  termsSection: { position: 'absolute', bottom: 25, left: 40, right: 40 },
   termsTitle: { fontSize: 10, color: '#333', marginBottom: 4 },
   termsText: { fontSize: 9, color: '#333' }
 });
 
 
 // --- FORMAT HELPER ---
-const formatCurrency = (amount) => Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatCurrency = (amount) => (Number(amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Notas cortas van en el footer (como "Thank you for your business.").
+// Notas largas o multilínea van en el cuerpo para que nunca se encimen con el contenido.
+const isShortNote = (text) => !!text && text.length <= 90 && !text.includes('\n');
 
 // --- STANDARD TEMPLATE COMPONENT ---
-const StandardTemplate = ({ data, subtotal, taxAmount, total }) => (
-  <Page size="A4" style={stdStyles.page}>
-    <View style={stdStyles.header}>
-      <View style={stdStyles.logoSection}>
-        {data.logo && <PdfImage src={data.logo} style={stdStyles.logo} />}
-        <Text style={stdStyles.companyName}>{data.companyName || 'Tu Empresa'}</Text>
-        <Text style={stdStyles.companyDetails}>{data.companyAddress}</Text>
-        <Text style={stdStyles.companyDetails}>{data.companyEmail}</Text>
-        <Text style={stdStyles.companyDetails}>{data.companyPhone}</Text>
-      </View>
-      <View style={stdStyles.invoiceTitleSection}>
-        <Text style={stdStyles.title}>INVOICE</Text>
-        <View style={stdStyles.invoiceMeta}>
-          <Text style={stdStyles.metaLabel}>INVOICE #:</Text>
-          <Text style={stdStyles.metaValue}>{data.invoiceNumber || '---'}</Text>
+const StandardTemplate = ({ data, subtotal, taxAmount, total }) => {
+  const notes = (data.notes || '').trim();
+  const footerNote = notes ? (isShortNote(notes) ? notes : 'Thank you for your business.') : 'Thank you for your business.';
+  const bodyNote = notes && !isShortNote(notes) ? notes : null;
+
+  return (
+    <Page size="A4" style={stdStyles.page}>
+      {/* HEADER */}
+      <View style={stdStyles.header}>
+        <View style={stdStyles.logoSection}>
+          {data.logo && <PdfImage src={data.logo} style={stdStyles.logo} />}
+          <Text style={stdStyles.companyName}>{data.companyName || 'Your Company'}</Text>
+          {!!data.companyAddress && <Text style={stdStyles.companyDetails}>{data.companyAddress}</Text>}
+          {!!data.companyEmail && <Text style={stdStyles.companyDetails}>{data.companyEmail}</Text>}
+          {!!data.companyPhone && <Text style={stdStyles.companyDetails}>{data.companyPhone}</Text>}
         </View>
-        <View style={stdStyles.invoiceMeta}>
-          <Text style={stdStyles.metaLabel}>DATE:</Text>
-          <View style={{ flexDirection: 'column' }}>
-            <Text style={stdStyles.metaValue}>{data.date || '---'}</Text>
-            {data.dateSubtext && <Text style={{ fontSize: 8, color: '#6b7280', textAlign: 'right', marginTop: 2, width: 80 }}>{data.dateSubtext}</Text>}
-          </View>
-        </View>
-        {data.dueDate ? (
+        <View style={stdStyles.invoiceTitleSection}>
+          <Text style={stdStyles.title}>INVOICE</Text>
           <View style={stdStyles.invoiceMeta}>
-            <Text style={stdStyles.metaLabel}>DUE DATE:</Text>
-            <Text style={stdStyles.metaValue}>{data.dueDate}</Text>
+            <Text style={stdStyles.metaLabel}>INVOICE #:</Text>
+            <View style={stdStyles.metaValueWrap}>
+              <Text style={stdStyles.metaValue}>{data.invoiceNumber || '---'}</Text>
+            </View>
           </View>
-        ) : null}
+          <View style={stdStyles.invoiceMeta}>
+            <Text style={stdStyles.metaLabel}>DATE:</Text>
+            <View style={stdStyles.metaValueWrap}>
+              <Text style={stdStyles.metaValue}>{data.date || '---'}</Text>
+              {!!data.dateSubtext && <Text style={stdStyles.metaSubtext}>{data.dateSubtext}</Text>}
+            </View>
+          </View>
+          {!!data.dueDate && (
+            <View style={stdStyles.invoiceMeta}>
+              <Text style={stdStyles.metaLabel}>DUE DATE:</Text>
+              <View style={stdStyles.metaValueWrap}>
+                <Text style={stdStyles.metaValue}>{data.dueDate}</Text>
+              </View>
+            </View>
+          )}
+        </View>
       </View>
-    </View>
 
-    <View style={stdStyles.billToSection}>
-      <Text style={stdStyles.billToLabel}>Bill To:</Text>
-      <Text style={stdStyles.clientName}>{data.clientName || 'Client Name'}</Text>
-      <Text style={stdStyles.clientDetails}>{data.clientAddress}</Text>
-      <Text style={stdStyles.clientDetails}>{data.clientEmail}</Text>
-      {data.signOffText && (
-        <View style={{ marginTop: 10 }}>
-          <Text style={{ fontSize: 10, color: '#111827', fontWeight: 'bold' }}>Attn:</Text>
-          <Text style={{ fontSize: 10, color: '#111827', marginTop: 2 }}>{data.signOffText}</Text>
-        </View>
-      )}
-    </View>
-
-    <View style={stdStyles.table}>
-      <View style={stdStyles.tableHeader}>
-        <Text style={stdStyles.thDesc}>Description</Text>
-        <Text style={stdStyles.thQty}>Qty.</Text>
-        <Text style={stdStyles.thPrice}>Price</Text>
-        <Text style={stdStyles.thTotal}>Total</Text>
-      </View>
-      {data.items.map((item, index) => (
-        <View key={index} style={stdStyles.tableRow}>
-          <Text style={stdStyles.tdDesc}>{item.description || 'Item'}</Text>
-          <Text style={stdStyles.tdQty}>{item.quantity}</Text>
-          <Text style={stdStyles.tdPrice}>${formatCurrency(item.price)}</Text>
-          <Text style={stdStyles.tdTotal}>${formatCurrency(item.quantity * item.price)}</Text>
-        </View>
-      ))}
-    </View>
-
-    <View style={stdStyles.totalsSection}>
-      <View style={stdStyles.totalsBlock}>
-        <View style={stdStyles.totalRow}>
-          <Text style={stdStyles.totalLabel}>Subtotal:</Text>
-          <Text style={stdStyles.totalValue}>${formatCurrency(subtotal)}</Text>
-        </View>
-        {data.showTax && (
-          <View style={stdStyles.totalRow}>
-            <Text style={stdStyles.totalLabel}>Tax ({data.taxRate}%):</Text>
-            <Text style={stdStyles.totalValue}>${formatCurrency(taxAmount)}</Text>
+      {/* BILL TO */}
+      <View style={stdStyles.billToSection} wrap={false}>
+        <Text style={stdStyles.billToLabel}>Bill To:</Text>
+        <Text style={stdStyles.clientName}>{data.clientName || 'Client Name'}</Text>
+        {!!data.clientAddress && <Text style={stdStyles.clientDetails}>{data.clientAddress}</Text>}
+        {!!data.clientEmail && <Text style={stdStyles.clientDetails}>{data.clientEmail}</Text>}
+        {!!data.signOffText && (
+          <View style={{ marginTop: 10 }}>
+            <Text style={stdStyles.attnLabel}>Attn:</Text>
+            <Text style={stdStyles.attnValue}>{data.signOffText}</Text>
           </View>
         )}
-        <View style={stdStyles.grandTotalRow}>
-          <Text style={stdStyles.grandTotalLabel}>Total:</Text>
-          <Text style={stdStyles.grandTotalValue}>${formatCurrency(total)}</Text>
+      </View>
+
+      {/* ITEMS TABLE */}
+      <View style={stdStyles.table}>
+        {/* minPresenceAhead evita que el encabezado quede solo al final de una página */}
+        <View style={stdStyles.tableHeader} minPresenceAhead={40}>
+          <Text style={stdStyles.thDesc}>Description</Text>
+          <Text style={stdStyles.thQty}>Qty.</Text>
+          <Text style={stdStyles.thPrice}>Price</Text>
+          <Text style={stdStyles.thTotal}>Total</Text>
+        </View>
+        {data.items.map((item, index) => {
+          const desc = item.description || 'Item';
+          // Filas cortas no se parten entre páginas; las muy largas sí pueden continuar.
+          const keepTogether = desc.length < 700;
+          return (
+            <View key={index} style={stdStyles.tableRow} wrap={!keepTogether}>
+              <Text style={stdStyles.tdDesc}>{desc}</Text>
+              <View style={stdStyles.tdQtyWrap}>
+                <Text style={stdStyles.tdQty}>{item.quantity}</Text>
+                {!!item.unit && <Text style={stdStyles.tdUnit}>{item.unit}</Text>}
+              </View>
+              <Text style={stdStyles.tdPrice}>${formatCurrency(item.price)}</Text>
+              <Text style={stdStyles.tdTotal}>${formatCurrency((Number(item.quantity) || 0) * (Number(item.price) || 0))}</Text>
+            </View>
+          );
+        })}
+      </View>
+
+      {/* TOTALS (siempre juntos, nunca partidos entre páginas) */}
+      <View style={stdStyles.totalsSection} wrap={false}>
+        <View style={stdStyles.totalsBlock}>
+          <View style={stdStyles.totalRow}>
+            <Text style={stdStyles.totalLabel}>Subtotal:</Text>
+            <Text style={stdStyles.totalValue}>${formatCurrency(subtotal)}</Text>
+          </View>
+          {data.showTax && (
+            <View style={stdStyles.totalRow}>
+              <Text style={stdStyles.totalLabel}>Tax ({data.taxRate}%):</Text>
+              <Text style={stdStyles.totalValue}>${formatCurrency(taxAmount)}</Text>
+            </View>
+          )}
+          <View style={stdStyles.grandTotalRow}>
+            <Text style={stdStyles.grandTotalLabel}>Total:</Text>
+            <Text style={stdStyles.grandTotalValue}>${formatCurrency(total)}</Text>
+          </View>
         </View>
       </View>
-    </View>
 
-    <View style={stdStyles.footer}>
-      <Text style={stdStyles.footerText}>{data.notes || 'Thank you for your business.'}</Text>
-    </View>
-  </Page>
-);
+      {/* NOTES LARGAS */}
+      {bodyNote && (
+        <View style={stdStyles.notesSection}>
+          <Text style={stdStyles.notesTitle} minPresenceAhead={30}>Notes</Text>
+          <Text style={stdStyles.notesText}>{bodyNote}</Text>
+        </View>
+      )}
+
+      {/* FOOTER FIJO EN CADA PÁGINA */}
+      <View style={stdStyles.footer} fixed>
+        <View style={stdStyles.footerSpacer} />
+        <Text style={stdStyles.footerText}>{footerNote}</Text>
+        <Text
+          style={stdStyles.pageNumber}
+          render={({ pageNumber, totalPages }) => (totalPages > 1 ? `Page ${pageNumber} of ${totalPages}` : '')}
+        />
+      </View>
+    </Page>
+  );
+};
 
 // --- INFINIGUARD TEMPLATE COMPONENT ---
 const InfiniguardTemplate = ({ data, subtotal, taxAmount, total }) => {
@@ -337,7 +415,7 @@ const InfiniguardTemplate = ({ data, subtotal, taxAmount, total }) => {
         )}
       </View>
 
-      <View style={infStyles.termsSection}>
+      <View style={infStyles.termsSection} fixed>
         <Text style={infStyles.termsTitle}>Terms & Conditions</Text>
         <Text style={infStyles.termsText}>Invoice currency is USD (United States dollars)</Text>
       </View>
@@ -348,8 +426,8 @@ const InfiniguardTemplate = ({ data, subtotal, taxAmount, total }) => {
 
 // --- MAIN WRAPPER COMPONENT ---
 const InvoiceDocument = ({ data }) => {
-  const subtotal = data.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-  const taxAmount = data.showTax ? subtotal * (data.taxRate / 100) : 0;
+  const subtotal = data.items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.price) || 0)), 0);
+  const taxAmount = data.showTax ? subtotal * ((Number(data.taxRate) || 0) / 100) : 0;
   const total = subtotal + taxAmount;
 
   return (
@@ -365,7 +443,7 @@ const InvoiceDocument = ({ data }) => {
 
 // --- MAIN UI COMPONENT ---
 export function InvoiceSection({ title }) {
-  const { clients, addDocument, addReceivable } = useFinance();
+  const { clients, addDocument, updateDocument, addReceivable, editingInvoice, clearEditingInvoice } = useFinance();
   const { logActivity } = useActivity();
   const [activeTab, setActiveTab] = useState('editor'); // editor | preview
   const [showTemplates, setShowTemplates] = useState(false);
@@ -403,6 +481,29 @@ export function InvoiceSection({ title }) {
     ]
   });
 
+  // Si se seleccionó una factura para editar desde Vault, rellenar todos sus datos
+  useEffect(() => {
+    if (editingInvoice) {
+      if (editingInvoice.data) {
+        setInvoiceData(editingInvoice.data);
+      } else {
+        const matchNum = editingInvoice.name?.match(/Invoice_([^\.]+)\.pdf/i);
+        if (matchNum) {
+          setInvoiceData(prev => ({
+            ...prev,
+            invoiceNumber: matchNum[1]
+          }));
+        }
+      }
+      setActiveTab('editor');
+    }
+  }, [editingInvoice]);
+
+  const handleCancelEdit = () => {
+    clearEditingInvoice();
+    loadStandardTemplate();
+  };
+
   const handleInputChange = (field, value) => {
     setInvoiceData(prev => ({ ...prev, [field]: value }));
   };
@@ -426,9 +527,10 @@ export function InvoiceSection({ title }) {
   };
 
   const updateItem = (index, field, value) => {
-    const newItems = [...invoiceData.items];
-    newItems[index][field] = value;
-    setInvoiceData(prev => ({ ...prev, items: newItems }));
+    setInvoiceData(prev => ({
+      ...prev,
+      items: prev.items.map((it, i) => (i === index ? { ...it, [field]: value } : it))
+    }));
   };
 
   const removeItem = (index) => {
@@ -532,48 +634,108 @@ export function InvoiceSection({ title }) {
       ]
     }));
   };
-  const subtotal = invoiceData.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+  // Plantilla Protex: datos fijos de la empresa precargados, datos de la factura vacíos.
+  const loadProtexTemplate = () => {
+    setInvoiceData(prev => ({
+      ...prev,
+      template: 'standard',
+      logo: LogoProtex,
+      companyName: 'PROTEX INNOVATIONS',
+      companyAddress: '28619 SONORAN FIELD CT\nFULSHEAR, TX 77441-1986',
+      companyEmail: 'info_sales@protexinnovations.com',
+      companyPhone: '',
+      companyTaxId: '',
+      companyTagline: '',
+      terms: '',
+      bankDetails: '',
+      notes: 'Thank you for your business.',
+      signOffText: '',
+      // Campos específicos de la factura vacíos para llenarlos desde cero
+      invoiceNumber: '',
+      date: new Date().toISOString().split('T')[0],
+      dateSubtext: '',
+      dueDate: '',
+      poNumber: '',
+      linkedClientId: null,
+      clientName: '',
+      clientAddress: '',
+      clientEmail: '',
+      shipToName: '',
+      shipToAddress: '',
+      taxRate: 0,
+      showTax: false,
+      items: [
+        { description: '', quantity: 1, price: 0, unit: '' },
+      ]
+    }));
+  };
+
+  const subtotal = invoiceData.items.reduce((sum, item) => sum + ((Number(item.quantity) || 0) * (Number(item.price) || 0)), 0);
   const taxAmountUI = invoiceData.showTax ? subtotal * (invoiceData.taxRate / 100) : 0;
   const total = subtotal + taxAmountUI;
 
   const handleCreateInvoice = async () => {
     setIsCreating(true);
-    // Simulated delay for effect
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise(resolve => setTimeout(resolve, 800));
     
     try {
       const blob = await pdf(<InvoiceDocument data={invoiceData} />).toBlob();
       const reader = new FileReader();
-      reader.onload = (event) => {
-        addDocument({
-          name: `Invoice_${invoiceData.invoiceNumber || Date.now()}.pdf`,
-          type: 'application/pdf',
-          size: blob.size,
-          category: 'Invoice',
-          url: event.target.result // Base64 data for backend
-        });
-        logActivity({
-          type: ACTIVITY_TYPES.INVOICE_SAVED,
-          title: 'Invoice generated and saved',
-          description: `Invoice #${invoiceData.invoiceNumber || '—'} for ${invoiceData.clientName || 'Client'}`
-        });
+      reader.onload = async (event) => {
+        const isEditing = !!editingInvoice;
+        const documentName = `Invoice_${invoiceData.invoiceNumber || Date.now()}.pdf`;
 
-        let msg = 'The invoice was saved in the document vault.';
-        if (invoiceData.linkedClientId) {
-          addReceivable({
-            description: `Invoice Receivable ${invoiceData.invoiceNumber ? '#' + invoiceData.invoiceNumber : '—'} (${invoiceData.clientName})`,
-            amount: total,
-            expectedDate: invoiceData.dueDate,
+        if (isEditing) {
+          await updateDocument(editingInvoice.docId, {
+            name: documentName,
+            type: 'application/pdf',
+            size: blob.size,
+            category: 'Invoice',
+            url: event.target.result,
+            invoiceData: invoiceData
           });
-          msg += ' An accounts receivable entry has been created for this client.';
-        }
+          logActivity({
+            type: ACTIVITY_TYPES.INVOICE_SAVED,
+            title: 'Invoice updated',
+            description: `Invoice #${invoiceData.invoiceNumber || '—'} for ${invoiceData.clientName || 'Client'}`
+          });
+          setSuccessModal({
+            isOpen: true,
+            message: 'La factura ha sido actualizada exitosamente en el Document Vault (manteniendo el mismo documento).'
+          });
+          clearEditingInvoice();
+        } else {
+          await addDocument({
+            name: documentName,
+            type: 'application/pdf',
+            size: blob.size,
+            category: 'Invoice',
+            url: event.target.result,
+            invoiceData: invoiceData
+          });
+          logActivity({
+            type: ACTIVITY_TYPES.INVOICE_SAVED,
+            title: 'Invoice generated and saved',
+            description: `Invoice #${invoiceData.invoiceNumber || '—'} for ${invoiceData.clientName || 'Client'}`
+          });
 
-        setSuccessModal({ isOpen: true, message: msg });
+          let msg = 'The invoice was saved in the document vault.';
+          if (invoiceData.linkedClientId) {
+            addReceivable({
+              description: `Invoice Receivable ${invoiceData.invoiceNumber ? '#' + invoiceData.invoiceNumber : '—'} (${invoiceData.clientName})`,
+              amount: total,
+              expectedDate: invoiceData.dueDate,
+            });
+            msg += ' An accounts receivable entry has been created for this client.';
+          }
+
+          setSuccessModal({ isOpen: true, message: msg });
+        }
         setIsCreating(false);
       };
       reader.readAsDataURL(blob);
     } catch (error) {
-      console.error("Error creating invoice", error);
+      console.error("Error creating/updating invoice", error);
       alert("Error generating the invoice.");
       setIsCreating(false);
     }
@@ -608,6 +770,7 @@ export function InvoiceSection({ title }) {
                 >
                   <button onClick={() => { loadStandardTemplate(); setShowTemplates(false); }} className="text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">Standard Template (Empty)</button>
                   <div className="h-px bg-slate-100 my-1" />
+                  <button onClick={() => { loadProtexTemplate(); setShowTemplates(false); }} className="text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors font-medium">Load Protex Template</button>
                   <button onClick={() => { loadInfiniguard1(); setShowTemplates(false); }} className="text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">Load Caribbean Energy Template</button>
                   <button onClick={() => { loadInfiniguard2(); setShowTemplates(false); }} className="text-left px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">Load Infiniguard Template</button>
                 </motion.div>
@@ -643,6 +806,31 @@ export function InvoiceSection({ title }) {
               exit={{ opacity: 0, x: -10 }}
               className="h-full overflow-y-auto custom-scrollbar pr-2 flex flex-col gap-6"
             >
+
+              {editingInvoice && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                      <FileText size={20} />
+                    </div>
+                    <div>
+                      <p className="text-xs text-amber-700 font-bold uppercase tracking-wider">Modo Edición</p>
+                      <p className="text-sm font-semibold text-slate-800">
+                        Editando la factura existente: <span className="text-indigo-600 font-bold">{editingInvoice.name}</span>
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Al guardar, se actualizará este mismo documento en el Vault sin crear un duplicado.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-amber-800 bg-amber-100/80 hover:bg-amber-200 transition-colors border border-amber-300 shrink-0"
+                  >
+                    Cancelar edición / Crear nueva
+                  </button>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -938,7 +1126,7 @@ export function InvoiceSection({ title }) {
                     ) : (
                       <>
                         <CheckCircle2 size={24} />
-                        Create Invoice
+                        {editingInvoice ? 'Update Invoice' : 'Create Invoice'}
                       </>
                     )}
                   </button>
@@ -956,7 +1144,9 @@ export function InvoiceSection({ title }) {
                 <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-4">
                   <CheckCircle2 size={32} />
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-2">Invoice Created!</h3>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">
+                  {editingInvoice ? 'Invoice Updated!' : 'Invoice Created!'}
+                </h3>
                 <p className="text-slate-600 text-sm mb-6 leading-relaxed">
                   {successModal.message}
                 </p>

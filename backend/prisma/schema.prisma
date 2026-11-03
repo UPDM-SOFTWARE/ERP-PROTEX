@@ -165,6 +165,10 @@ model Document {
   size      Int
   fileUrl   String?
   
+  // Datos del formulario de la factura (solo para facturas creadas en el ERP).
+  // Permite volver a abrir la factura en el editor y regenerar el mismo documento.
+  invoiceData Json?
+  
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   

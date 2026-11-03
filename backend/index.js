@@ -28,10 +28,10 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
 app.use(cors()); // Allow all origins
 app.use(express.json({ limit: '50mb' }));
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, 'uploads');
+// Ensure uploads directory exists (supports Railway Volume via RAILWAY_VOLUME_MOUNT_PATH or UPLOADS_DIR)
+const uploadsDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
 // Serve uploads directory statically
 app.use('/uploads', express.static(uploadsDir));

@@ -17,6 +17,7 @@ export function FinanceProvider({ children }) {
   const [payables, setPayables] = useState([]);
   const [clients, setClients] = useState([]);
   const [documents, setDocuments] = useState([]);
+  const [editingInvoice, setEditingInvoice] = useState(null);
   const [budgets, setBudgets] = useState([]);
   const [budgetCardIds, setBudgetCardIds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -216,7 +217,33 @@ export function FinanceProvider({ children }) {
     } catch (e) { console.error(e); }
   };
   const updateDocument = async (id, updates) => {
-    setDocuments(documents.map(d => d.id === id ? { ...d, ...updates } : d));
+    try {
+      const payload = { ...updates };
+      if (updates.url) {
+        payload.fileData = updates.url;
+        delete payload.url;
+      }
+      const updated = await apiCall(`/documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, ...updated } : d));
+      return updated;
+    } catch (e) {
+      console.error('Error updating document:', e);
+      setDocuments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+    }
+  };
+
+  const startEditingInvoice = (doc) => {
+    if (!doc) return;
+    setEditingInvoice({
+      docId: doc.id,
+      name: doc.name,
+      data: doc.invoiceData || null,
+      fileUrl: doc.fileUrl
+    });
+  };
+
+  const clearEditingInvoice = () => {
+    setEditingInvoice(null);
   };
 
   // -- EXPECTED EXPENSES --
@@ -306,6 +333,7 @@ export function FinanceProvider({ children }) {
       receivables, addReceivable, collectReceivable,
       payables, addPayable, payPayable,
       documents, addDocument, deleteDocument, updateDocument,
+      editingInvoice, startEditingInvoice, clearEditingInvoice,
       budgets, addBudget, updateBudget, deleteBudget,
       budgetCardIds, toggleBudgetCard, getBudgetTotalBalance,
       clients, addClient, deleteClient, updateClient,
