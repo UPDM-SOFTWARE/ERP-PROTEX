@@ -229,8 +229,22 @@ app.delete('/api/users/:id', authenticateToken, requireAdmin, async (req, res) =
   }
 });
 
+// --- Healthcheck para Railway ---
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // --- Montar Rutas Adicionales ---
 app.use('/api', authenticateToken, apiRouter);
+
+// --- Servir Frontend compilado (Monorepo en producción) ---
+const frontendDistPath = path.join(__dirname, '../frontend/dist');
+if (fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+  app.get(/^(?!\/(api|uploads)).*/, (req, res) => {
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+}
 
 io.on('connection', (socket) => {
   socket.on('joinRoom', (ownerId) => {

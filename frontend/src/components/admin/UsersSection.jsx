@@ -3,6 +3,8 @@ import { useAuth } from '../../context/AuthContext';
 import { UserPlus, Shield, User, Loader2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3001/api');
+
 export function UsersSection({ title }) {
   const { token } = useAuth();
   const [users, setUsers] = useState([]);
@@ -12,7 +14,7 @@ export function UsersSection({ title }) {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/users`, {
+      const res = await fetch(`${API_URL}/users`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -33,7 +35,7 @@ export function UsersSection({ title }) {
   const handleDelete = async (id) => {
     if (!confirm('¿Estás seguro de que quieres eliminar a este usuario permanentemente?')) return;
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/users/${id}`, {
+      const res = await fetch(`${API_URL}/users/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -54,7 +56,7 @@ export function UsersSection({ title }) {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/users`, {
+      const res = await fetch(`${API_URL}/users`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

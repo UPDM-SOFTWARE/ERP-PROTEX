@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import { io } from 'socket.io-client';
 
 const FinanceContext = createContext(null);
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3001/api');
 
 export function FinanceProvider({ children }) {
   const { logActivity } = useActivity();
@@ -66,7 +66,8 @@ export function FinanceProvider({ children }) {
     if (token && user) {
       fetchAllData();
 
-      const socket = io(API_URL.replace('/api', ''), { transports: ['websocket', 'polling'] });
+      const socketUrl = API_URL.startsWith('http') ? API_URL.replace(/\/api\/?$/, '') : window.location.origin;
+      const socket = io(socketUrl, { transports: ['websocket', 'polling'] });
       
       // Join the team's room to receive real-time updates
       socket.emit('joinRoom', user.ownerId);

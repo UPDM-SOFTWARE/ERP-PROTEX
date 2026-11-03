@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3001/api');
 
 // --- Fetch Interceptor for 401 Expirations ---
 const originalFetch = window.fetch;

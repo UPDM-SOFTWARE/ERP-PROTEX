@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "prisma generate",
-    "start": "node index.js",
+    "build": "npx prisma generate",
+    "start": "npx prisma db push && node index.js",
     "dev": "nodemon index.js"
   },
   "keywords": [],
