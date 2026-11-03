@@ -67,7 +67,11 @@ export function FinanceProvider({ children }) {
       fetchAllData();
 
       const socketUrl = API_URL.startsWith('http') ? API_URL.replace(/\/api\/?$/, '') : window.location.origin;
-      const socket = io(socketUrl, { transports: ['websocket', 'polling'] });
+      const socket = io(socketUrl, {
+        transports: ['polling', 'websocket'],
+        reconnectionAttempts: 5,
+        timeout: 10000
+      });
       
       // Join the team's room to receive real-time updates
       socket.emit('joinRoom', user.ownerId);
