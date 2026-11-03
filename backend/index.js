@@ -40,7 +40,12 @@ app.use('/uploads', express.static(uploadsDir));
 async function initSuperAdmin() {
   try {
     const adminExists = await prisma.user.findFirst({
-      where: { role: 'ADMIN' }
+      where: {
+        OR: [
+          { role: 'ADMIN' },
+          { email: 'admin' }
+        ]
+      }
     });
 
     const hashedPassword = await bcrypt.hash('admin123', 10);
@@ -56,15 +61,12 @@ async function initSuperAdmin() {
         }
       });
       console.log('Super Admin created: admin / admin123');
-    } else {
-      // Update existing admin to ensure they can login with just "admin"
-      if (adminExists.email !== 'admin' && adminExists.name !== 'admin') {
-        await prisma.user.update({
-          where: { id: adminExists.id },
-          data: { email: 'admin', name: 'admin' }
-        });
-        console.log('Super Admin updated to use "admin" as username.');
-      }
+    } else if (adminExists.role !== 'ADMIN' || (adminExists.email !== 'admin' && adminExists.name !== 'admin')) {
+      await prisma.user.update({
+        where: { id: adminExists.id },
+        data: { email: 'admin', name: 'admin', role: 'ADMIN' }
+      });
+      console.log('Super Admin updated to use "admin" as username and ADMIN role.');
     }
   } catch (error) {
     console.error('Error initializing super admin:', error);
