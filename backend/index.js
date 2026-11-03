@@ -61,12 +61,18 @@ async function initSuperAdmin() {
         }
       });
       console.log('Super Admin created: admin / admin123');
-    } else if (adminExists.role !== 'ADMIN' || (adminExists.email !== 'admin' && adminExists.name !== 'admin')) {
+    } else {
+      // Asegurar que admin tenga contraseña conocida admin123 y rol ADMIN
       await prisma.user.update({
         where: { id: adminExists.id },
-        data: { email: 'admin', name: 'admin', role: 'ADMIN' }
+        data: {
+          email: 'admin',
+          name: adminExists.name || 'admin',
+          role: 'ADMIN',
+          password: hashedPassword
+        }
       });
-      console.log('Super Admin updated to use "admin" as username and ADMIN role.');
+      console.log('Super Admin password set to admin123 and role ADMIN verified.');
     }
   } catch (error) {
     console.error('Error initializing super admin:', error);
