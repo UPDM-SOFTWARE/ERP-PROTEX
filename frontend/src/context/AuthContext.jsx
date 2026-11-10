@@ -8,7 +8,8 @@ const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' :
 const originalFetch = window.fetch;
 window.fetch = async function(...args) {
   const response = await originalFetch.apply(this, args);
-  if ((response.status === 401 || response.status === 403) && !args[0].toString().includes('/auth/login')) {
+  const url = args[0].toString();
+  if ((response.status === 401 || response.status === 403) && !url.includes('/auth/login') && !url.includes('/auth/register')) {
     window.dispatchEvent(new Event('auth:unauthorized'));
   }
   return response;
@@ -67,6 +68,31 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const register = async (email, password, key) => {
+    try {
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, key })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al registrar usuario');
+      }
+
+      setToken(data.token);
+      setUser(data.user);
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
@@ -84,6 +110,7 @@ export function AuthProvider({ children }) {
     user,
     token,
     login,
+    register,
     logout,
     updateUser,
     loading

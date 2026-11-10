@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { Server } from 'socket.io';
 import http from 'http';
@@ -151,6 +152,72 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// REGISTER CON KEY
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const email = (req.body.email || '').trim();
+    const password = req.body.password || '';
+    const key = (req.body.key || '').trim().toUpperCase();
+
+    if (!email || !password || !key) {
+      return res.status(400).json({ error: 'Usuario, contraseña y key son requeridos' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const regKey = await tx.registrationKey.findUnique({ where: { code: key } });
+      if (!regKey || regKey.used) {
+        return { error: 'Key inválida o ya utilizada', status: 400 };
+      }
+
+      const existingUser = await tx.user.findUnique({ where: { email } });
+      if (existingUser) {
+        return { error: 'Ese usuario ya está registrado', status: 400 };
+      }
+
+      const claim = await tx.registrationKey.updateMany({
+        where: { id: regKey.id, used: false },
+        data: { used: true, usedBy: email, usedAt: new Date() }
+      });
+      if (claim.count === 0) {
+        return { error: 'Key inválida o ya utilizada', status: 400 };
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const newUser = await tx.user.create({
+        data: {
+          email,
+          name: email.includes('@') ? email.split('@')[0] : email,
+          password: hashedPassword,
+          role: 'USER'
+        }
+      });
+
+      return { user: newUser };
+    });
+
+    if (result.error) {
+      return res.status(result.status || 400).json({ error: result.error });
+    }
+
+    const user = result.user;
+    const ownerId = user.parentId || user.id;
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, name: user.name, parentId: user.parentId, ownerId, companyName: user.companyName },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    const { password: _, ...userWithoutPassword } = user;
+    res.status(201).json({ token, user: { ...userWithoutPassword, ownerId } });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al registrar usuario' });
+  }
+});
+
 
 // --- Rutas de Usuarios (Admin Only) ---
 
@@ -239,6 +306,46 @@ app.delete('/api/users/:id', authenticateToken, requireAdmin, async (req, res) =
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error al eliminar usuario' });
+  }
+});
+
+// --- Rutas de Registration Keys (Admin Only) ---
+
+app.get('/api/keys', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const keys = await prisma.registrationKey.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(keys);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al obtener las keys' });
+  }
+});
+
+app.post('/api/keys', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const part1 = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const part2 = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const code = `PROTEX-${part1}-${part2}`;
+
+    const newKey = await prisma.registrationKey.create({
+      data: { code }
+    });
+    res.status(201).json(newKey);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al generar la key' });
+  }
+});
+
+app.delete('/api/keys/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await prisma.registrationKey.delete({ where: { id: req.params.id } });
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error al eliminar la key' });
   }
 });
 

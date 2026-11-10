@@ -238,4 +238,13 @@ model Payable {
   updatedAt   DateTime @updatedAt
 }
 
+model RegistrationKey {
+  id        String    @id @default(uuid())
+  code      String    @unique
+  used      Boolean   @default(false)
+  usedBy    String?
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
 
