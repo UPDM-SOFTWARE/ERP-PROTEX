@@ -143,8 +143,8 @@ export function ReportsSection({ title }) {
       c.type?.toUpperCase() === 'INCOME' ? a + Number(c.amount) : a - Number(c.amount), 0);
 
     const currentBal = selectedCard === 'all'
-      ? getTotalBalance()
-      : (cards.find(c => c.id === selectedCard)?.balance || 0);
+      ? Number(getTotalBalance())
+      : Number(cards.find(c => c.id === selectedCard)?.balance || 0);
 
     const approxInitial = currentBal - cashFlow;
 
@@ -158,7 +158,11 @@ export function ReportsSection({ title }) {
 
     for (let d = 1; d <= daysInMonth; d++) {
       const dayStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const dayMvs = sorted.filter(m => m.date === dayStr);
+      const dayMvs = sorted.filter(m => {
+        if (!m.date) return false;
+        const mDateStr = typeof m.date === 'string' ? m.date.split('T')[0] : new Date(m.date).toISOString().split('T')[0];
+        return mDateStr === dayStr;
+      });
       if (dayMvs.length === 0) continue;
       const dayIncome = dayMvs.filter(m => m.type?.toUpperCase() === 'INCOME').reduce((a, c) => a + Number(c.amount), 0);
       const dayExpense = dayMvs.filter(m => m.type?.toUpperCase() === 'EXPENSE').reduce((a, c) => a + Number(c.amount), 0);
@@ -187,7 +191,8 @@ export function ReportsSection({ title }) {
   const categoryData = useMemo(() => {
     const map = {};
     monthlyStats.filtered.filter(m => m.type?.toUpperCase() === 'EXPENSE').forEach(m => {
-      map[m.category] = (map[m.category] || 0) + m.amount;
+      const catName = m.category || 'General';
+      map[catName] = (map[catName] || 0) + (Number(m.amount) || 0);
     });
     return Object.entries(map)
       .map(([name, value]) => ({ name, value }))
@@ -640,7 +645,7 @@ export function ReportsSection({ title }) {
                         const card = cards.find(c => c.id === m.cardId);
                         return (
                           <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-5 py-3.5 text-slate-500 text-xs font-mono">{m.date}</td>
+                            <td className="px-5 py-3.5 text-slate-500 text-xs font-mono">{m.date ? String(m.date).split('T')[0] : '—'}</td>
                             <td className="px-5 py-3.5 text-slate-800 font-medium">{m.description}</td>
                             <td className="px-5 py-3.5">
                               <span className="px-2 py-0.5 bg-slate-100 border border-slate-200 rounded-full text-slate-600 text-xs">{m.category}</span>

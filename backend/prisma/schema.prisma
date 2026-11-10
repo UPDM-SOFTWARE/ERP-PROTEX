@@ -51,6 +51,7 @@ model Card {
   currency    String     @default("USD")
   lastFour    String?    // Últimos 4 dígitos para UI
   color       String?    // Color de la tarjeta (hex o tailwind class)
+  isActive    Boolean    @default(true)
   
   userId      String
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -75,7 +75,10 @@ export function FinanceProvider({ children }) {
       });
       
       // Join the team's room to receive real-time updates
-      socket.emit('joinRoom', user.ownerId);
+      const roomOwnerId = user.ownerId || user.parentId || user.id;
+      if (roomOwnerId) {
+        socket.emit('joinRoom', roomOwnerId);
+      }
 
       socket.on('updateData', () => {
         fetchAllData();
@@ -94,7 +97,7 @@ export function FinanceProvider({ children }) {
     try {
       const newCard = await apiCall('/cards', { method: 'POST', body: JSON.stringify(card) });
       setCards(prev => [newCard, ...prev]);
-      logActivity({ type: ACTIVITY_TYPES.CARD_ADDED, title: 'Card added', description: `${card.name}` });
+      logActivity({ type: ACTIVITY_TYPES.CARD_ADDED, title: 'Card added', description: `${card.bank || card.name || 'Card'}` });
     } catch (e) { console.error(e); }
   };
   const deleteCard = async (id) => {
@@ -102,11 +105,28 @@ export function FinanceProvider({ children }) {
       await apiCall(`/cards/${id}`, { method: 'DELETE' });
       const card = cards.find(c => c.id === id);
       setCards(cards.filter(c => c.id !== id));
-      if (card) logActivity({ type: ACTIVITY_TYPES.CARD_DELETED, title: 'Card deleted', description: `${card.name}` });
+      if (card) logActivity({ type: ACTIVITY_TYPES.CARD_DELETED, title: 'Card deleted', description: `${card.bank || card.name}` });
     } catch (e) { console.error(e); }
   };
   const toggleCardStatus = async (id) => {
-    setCards(cards.map(c => c.id === id ? { ...c, isActive: c.isActive === false ? true : false } : c));
+    const target = cards.find(c => c.id === id);
+    if (!target) return;
+    const nextActive = target.isActive === false ? true : false;
+    setCards(prev => prev.map(c => c.id === id ? { ...c, isActive: nextActive } : c));
+    try {
+      const updated = await apiCall(`/cards/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ isActive: nextActive })
+      });
+      setCards(prev => prev.map(c => c.id === id ? { ...c, ...updated } : c));
+      logActivity({
+        type: ACTIVITY_TYPES.CARD_TOGGLED,
+        title: nextActive ? 'Card reactivated' : 'Card deactivated',
+        description: `${target.bank || target.name}`
+      });
+    } catch (e) {
+      console.error('Error toggling card status:', e);
+    }
   };
 
   // -- MOVEMENTS --
@@ -146,6 +166,19 @@ export function FinanceProvider({ children }) {
     const tgt = cards.find(c => c.id === targetId);
     logActivity({ type: ACTIVITY_TYPES.TRANSFER, title: 'Transfer completed', description: `$${Number(amount).toFixed(2)} from ${src?.name ?? '?'} to ${tgt?.name ?? '?'}` });
     return { success: true };
+  };
+
+  const deleteMovement = async (id) => {
+    try {
+      await apiCall(`/movements/${id}`, { method: 'DELETE' });
+      setMovements(prev => prev.filter(m => m.id !== id));
+      const updatedCards = await apiCall('/cards');
+      setCards(updatedCards);
+      return { success: true };
+    } catch (e) {
+      console.error('Error deleting movement:', e);
+      return { success: false, error: e.message };
+    }
   };
 
   // -- CLIENTS --
@@ -205,9 +238,10 @@ export function FinanceProvider({ children }) {
         delete payload.url;
       }
       const d = await apiCall('/documents', { method: 'POST', body: JSON.stringify(payload) });
-      setDocuments([d, ...documents]);
+      setDocuments(prev => [d, ...prev]);
       logActivity({ type: ACTIVITY_TYPES.DOCUMENT_ADDED, title: 'Document saved', description: doc.name });
-    } catch (e) { console.error(e); }
+      return d;
+    } catch (e) { console.error(e); throw e; }
   };
   const deleteDocument = async (id) => {
     try {
@@ -279,7 +313,13 @@ export function FinanceProvider({ children }) {
   const addReceivable = async (item) => {
     try {
       const r = await apiCall('/receivables', { method: 'POST', body: JSON.stringify(item) });
-      setReceivables([r, ...receivables]);
+      setReceivables(prev => [r, ...prev]);
+    } catch (e) { console.error(e); }
+  };
+  const deleteReceivable = async (id) => {
+    try {
+      await apiCall(`/receivables/${id}`, { method: 'DELETE' });
+      setReceivables(prev => prev.filter(r => r.id !== id));
     } catch (e) { console.error(e); }
   };
   const collectReceivable = async (id, cardId) => {
@@ -302,7 +342,13 @@ export function FinanceProvider({ children }) {
   const addPayable = async (item) => {
     try {
       const p = await apiCall('/payables', { method: 'POST', body: JSON.stringify(item) });
-      setPayables([p, ...payables]);
+      setPayables(prev => [p, ...prev]);
+    } catch (e) { console.error(e); }
+  };
+  const deletePayable = async (id) => {
+    try {
+      await apiCall(`/payables/${id}`, { method: 'DELETE' });
+      setPayables(prev => prev.filter(p => p.id !== id));
     } catch (e) { console.error(e); }
   };
   const payPayable = async (id, cardId) => {
@@ -328,10 +374,10 @@ export function FinanceProvider({ children }) {
   return (
     <FinanceContext.Provider value={{
       cards, addCard, deleteCard, toggleCardStatus,
-      movements, addMovement, transferBetweenCards,
+      movements, addMovement, deleteMovement, transferBetweenCards,
       expectedExpenses, addExpectedExpense, payExpectedExpense, deleteExpectedExpense,
-      receivables, addReceivable, collectReceivable,
-      payables, addPayable, payPayable,
+      receivables, addReceivable, deleteReceivable, collectReceivable,
+      payables, addPayable, deletePayable, payPayable,
       documents, addDocument, deleteDocument, updateDocument,
       editingInvoice, startEditingInvoice, clearEditingInvoice,
       budgets, addBudget, updateBudget, deleteBudget,

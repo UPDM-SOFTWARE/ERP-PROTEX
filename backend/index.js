@@ -48,7 +48,8 @@ async function initSuperAdmin() {
       }
     });
 
-    const hashedPassword = await bcrypt.hash('admin123', 10);
+    const defaultAdminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const hashedPassword = await bcrypt.hash(defaultAdminPassword, 10);
 
     if (!adminExists) {
       console.log('No admin found. Creating default Super Admin...');
@@ -60,19 +61,21 @@ async function initSuperAdmin() {
           role: 'ADMIN'
         }
       });
-      console.log('Super Admin created: admin / admin123');
+      console.log('Super Admin created.');
     } else {
-      // Asegurar que admin tenga contraseña conocida admin123 y rol ADMIN
+      const updateData = {
+        email: 'admin',
+        name: adminExists.name || 'admin',
+        role: 'ADMIN'
+      };
+      if (process.env.ADMIN_PASSWORD) {
+        updateData.password = hashedPassword;
+      }
       await prisma.user.update({
         where: { id: adminExists.id },
-        data: {
-          email: 'admin',
-          name: adminExists.name || 'admin',
-          role: 'ADMIN',
-          password: hashedPassword
-        }
+        data: updateData
       });
-      console.log('Super Admin password set to admin123 and role ADMIN verified.');
+      console.log('Super Admin role ADMIN verified.');
     }
   } catch (error) {
     console.error('Error initializing super admin:', error);
@@ -129,9 +132,11 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
+    const ownerId = user.parentId || user.id;
+
     // Generar JWT
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, name: user.name, parentId: user.parentId, companyName: user.companyName },
+      { id: user.id, email: user.email, role: user.role, name: user.name, parentId: user.parentId, ownerId, companyName: user.companyName },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -139,7 +144,7 @@ app.post('/api/auth/login', async (req, res) => {
     // No enviar la contraseña al cliente
     const { password: _, ...userWithoutPassword } = user;
 
-    res.json({ token, user: userWithoutPassword });
+    res.json({ token, user: { ...userWithoutPassword, ownerId } });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error interno del servidor' });

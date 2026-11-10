@@ -121,17 +121,21 @@ export function VaultSection({ title, onNavigate }) {
     setPendingUploads(prev => prev.map(p => p.id === id ? { ...p, name: newName } : p));
   };
 
-  const confirmUpload = () => {
+  const confirmUpload = async () => {
     setIsUploading(true);
-    // Simulate delay
-    setTimeout(() => {
-      pendingUploads.forEach(doc => {
-        const { id, ...docData } = doc; // Remove temp ID
-        addDocument(docData);
-      });
+    try {
+      await Promise.all(
+        pendingUploads.map(doc => {
+          const { id, ...docData } = doc;
+          return addDocument(docData);
+        })
+      );
       setPendingUploads([]);
+    } catch (err) {
+      console.error('Error uploading documents:', err);
+    } finally {
       setIsUploading(false);
-    }, 1500); // 1.5 seconds delay
+    }
   };
 
   const startEditing = (doc) => {
@@ -326,7 +330,7 @@ export function VaultSection({ title, onNavigate }) {
                   )}
                   
                   <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <span>{doc.date}</span>
+                    <span>{doc.date || (doc.createdAt ? String(doc.createdAt).split('T')[0] : '—')}</span>
                     <span>•</span>
                     <span>{formatBytes(doc.size)}</span>
                   </div>
@@ -443,7 +447,7 @@ export function VaultSection({ title, onNavigate }) {
                   {getFileIcon(previewDoc.type, 24)}
                   <div>
                     <h3 className="text-slate-900 font-bold truncate max-w-[300px] sm:max-w-md">{previewDoc.name}</h3>
-                    <p className="text-slate-500 text-xs font-medium">{previewDoc.category === 'Factura' || previewDoc.category === 'Facturas Creadas' ? 'Created Invoices' : previewDoc.category} • {formatBytes(previewDoc.size)} • {previewDoc.date}</p>
+                    <p className="text-slate-500 text-xs font-medium">{previewDoc.category === 'Factura' || previewDoc.category === 'Facturas Creadas' ? 'Created Invoices' : previewDoc.category} • {formatBytes(previewDoc.size)} • {previewDoc.date || (previewDoc.createdAt ? String(previewDoc.createdAt).split('T')[0] : '—')}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Briefcase, Plus, Search, Mail, Phone, MapPin, Trash2, X } from 'lucide-react';
+import { Users, Briefcase, Plus, Search, Mail, Phone, MapPin, Trash2, Edit2, X } from 'lucide-react';
 import { useFinance } from '../../context/FinanceContext';
 
 export function ClientsSection() {
-  const { clients, addClient, deleteClient } = useFinance();
+  const { clients, addClient, updateClient, deleteClient } = useFinance();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all'); // 'all', 'client', 'provider'
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState(null);
 
   const filteredClients = clients.filter(c => {
     const matchesSearch = c.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -53,7 +54,7 @@ export function ClientsSection() {
             />
           </div>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => { setEditingClient(null); setIsModalOpen(true); }}
             className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors shrink-0 shadow-sm"
           >
             <Plus size={18} /> <span className="hidden sm:inline">New</span>
@@ -86,12 +87,22 @@ export function ClientsSection() {
                         </span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => deleteClient(client.id)}
-                      className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all absolute top-4 right-4"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all absolute top-4 right-4">
+                      <button
+                        onClick={() => { setEditingClient(client); setIsModalOpen(true); }}
+                        className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors"
+                        title="Edit"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      <button
+                        onClick={() => deleteClient(client.id)}
+                        className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                   
                   <div className="space-y-2 mt-2">
@@ -122,26 +133,36 @@ export function ClientsSection() {
 
       <AnimatePresence>
         {isModalOpen && (
-          <AddClientModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onAdd={addClient} />
+          <AddClientModal
+            isOpen={isModalOpen}
+            editingClient={editingClient}
+            onClose={() => { setIsModalOpen(false); setEditingClient(null); }}
+            onAdd={addClient}
+            onUpdate={updateClient}
+          />
         )}
       </AnimatePresence>
     </div>
   );
 }
 
-function AddClientModal({ onClose, onAdd }) {
+function AddClientModal({ onClose, onAdd, onUpdate, editingClient }) {
   const [form, setForm] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    address: '',
-    type: 'client'
+    name: editingClient?.name || '',
+    email: editingClient?.email || '',
+    phone: editingClient?.phone || '',
+    address: editingClient?.address || '',
+    type: editingClient?.type || 'client'
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.name) return;
-    onAdd(form);
+    if (editingClient && onUpdate) {
+      onUpdate(editingClient.id, form);
+    } else {
+      onAdd(form);
+    }
     onClose();
   };
 
@@ -150,7 +171,7 @@ function AddClientModal({ onClose, onAdd }) {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
       <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 20 }} className="relative bg-white border border-slate-200 p-6 rounded-3xl shadow-2xl w-full max-w-md">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-slate-900">New Contact</h3>
+          <h3 className="text-xl font-bold text-slate-900">{editingClient ? 'Edit Contact' : 'New Contact'}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors">
             <X size={20} />
           </button>

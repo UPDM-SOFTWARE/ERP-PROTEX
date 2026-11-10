@@ -4,7 +4,7 @@ import {
   ArrowDownRight, ArrowUpRight, Plus, Filter, CalendarDays, Wallet,
   Send, ArrowLeftRight, Download, Receipt, TrendingUp, History,
   FileText, Briefcase, ChevronLeft, ChevronRight, X, CreditCard,
-  UploadCloud, User, ChevronDown, ChevronUp, Loader2, CheckCircle, Scan
+  UploadCloud, User, ChevronDown, ChevronUp, Loader2, CheckCircle, Scan, Trash2
 } from 'lucide-react';
 import { useFinance } from '../../context/FinanceContext';
 import { getBankData } from '../../utils/bankData';
@@ -291,23 +291,54 @@ export function MovementsSection() {
 // --- Smart Column Views ---
 
 function HistoryView({ selectedCardId, movements }) {
+  const { deleteMovement } = useFinance();
+  const [filterType, setFilterType] = useState('ALL'); // 'ALL', 'INCOME', 'EXPENSE'
+  const [showFilter, setShowFilter] = useState(false);
+
   const filteredMovements = useMemo(() => {
     if (!selectedCardId) return [];
-    return movements.filter(m => m.cardId === selectedCardId);
-  }, [movements, selectedCardId]);
+    return movements.filter(m => {
+      if (m.cardId !== selectedCardId) return false;
+      if (filterType !== 'ALL' && m.type?.toUpperCase() !== filterType) return false;
+      return true;
+    });
+  }, [movements, selectedCardId, filterType]);
 
   return (
     <motion.div 
       initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}
       className="relative flex-1 flex flex-col h-full z-10"
     >
-      <div className="px-6 py-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+      <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
         <h4 className="text-slate-800 font-medium flex items-center gap-2">
           <History size={18} className="text-indigo-600" /> Card History
         </h4>
-        <button className="text-slate-500 hover:text-slate-800 p-1.5 rounded-lg hover:bg-slate-200 transition-colors">
-          <Filter size={16} />
-        </button>
+        <div className="flex items-center gap-2">
+          {showFilter && (
+            <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 text-xs">
+              {[
+                { id: 'ALL', label: 'All' },
+                { id: 'INCOME', label: 'Income' },
+                { id: 'EXPENSE', label: 'Expenses' }
+              ].map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setFilterType(f.id)}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-colors ${filterType === f.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:text-slate-700'}`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={() => setShowFilter(prev => !prev)}
+            className={`p-1.5 rounded-lg transition-colors ${showFilter ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200'}`}
+            title="Filter movements"
+          >
+            <Filter size={16} />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
@@ -322,25 +353,34 @@ function HistoryView({ selectedCardId, movements }) {
                 transition={{ delay: i * 0.05 }}
                 className="relative flex items-center justify-between p-4 rounded-2xl group border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all"
               >
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center border ${
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center border ${
                     isIncome 
                       ? 'bg-emerald-50 border-emerald-100 text-emerald-600' 
                       : 'bg-red-50 border-red-100 text-red-600'
                   }`}>
                     {isIncome ? <ArrowDownRight size={18} /> : <ArrowUpRight size={18} />}
                   </div>
-                  <div>
-                    <p className="text-slate-800 font-medium">{movement.description}</p>
+                  <div className="min-w-0">
+                    <p className="text-slate-800 font-medium truncate">{movement.description}</p>
                     <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
-                      <span className="flex items-center gap-1"><CalendarDays size={10} /> {movement.date ? new Date(movement.date).toLocaleDateString() : 'N/A'}</span>
+                      <span className="flex items-center gap-1"><CalendarDays size={10} /> {movement.date ? String(movement.date).split('T')[0] : 'N/A'}</span>
                       <span>•</span>
                       <span>{movement.category || 'General'}</span>
                     </div>
                   </div>
                 </div>
-                <div className={`font-bold ${isIncome ? 'text-emerald-600' : 'text-slate-800'}`}>
-                  {isIncome ? '+' : '-'}${Number(movement.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                <div className="flex items-center gap-3 shrink-0 ml-2">
+                  <div className={`font-bold ${isIncome ? 'text-emerald-600' : 'text-slate-800'}`}>
+                    {isIncome ? '+' : '-'}${Number(movement.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <button
+                    onClick={() => deleteMovement(movement.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                    title="Delete transaction (reverts card balance)"
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </div>
               </motion.div>
             );
@@ -404,24 +444,20 @@ function QuickAddView({ type, selectedCardId, addMovement, setActiveView }) {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Set scanning state
       setIsScanning(true);
-      setForm(prev => ({ ...prev, attachedFile: file }));
-
-      // Simulate OCR Extraction
-      setTimeout(() => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
         setIsScanning(false);
         setForm(prev => ({
           ...prev,
-          amount: isIncome ? '15000.00' : '1500.00',
-          applyIva: true,
-          description: isIncome ? 'Service Sale' : 'Supply Purchase',
-          category: isIncome ? 'Sales' : 'Operations',
-          folio: isIncome ? 'INV-9821' : 'T-00452',
-          rfc: isIncome ? 'XAXX010101000' : 'PROV010101000',
-          paymentMethod: 'Transfer'
+          attachedFile: file,
+          attachedFileUrl: event.target.result
         }));
-      }, 1500);
+      };
+      reader.onerror = () => {
+        setIsScanning(false);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -431,13 +467,13 @@ function QuickAddView({ type, selectedCardId, addMovement, setActiveView }) {
     if (!form.amount || !form.description || !selectedCardId) return;
 
     if (form.attachedFile) {
-      addDocument({
+      await addDocument({
         name: form.attachedFile.name,
         type: form.attachedFile.type || 'application/pdf',
-        category: isIncome ? 'Invoice' : 'Receipt',
+        category: isIncome ? 'Created Invoices' : 'Scanned',
         date: form.date,
         size: form.attachedFile.size || 1024,
-        fileUrl: null
+        url: form.attachedFileUrl || null
       });
     }
 
@@ -529,8 +565,8 @@ function QuickAddView({ type, selectedCardId, addMovement, setActiveView }) {
           <label className={`relative border-2 border-dashed border-${color}-200 bg-${color}-50/50 hover:bg-${color}-50 rounded-xl py-3 px-4 flex flex-row items-center justify-center gap-3 cursor-pointer transition-colors group overflow-hidden`}>
             {isScanning ? (
               <div className="flex items-center justify-center text-indigo-600 gap-2">
-                <Scan className="animate-pulse" size={20} />
-                <span className="text-sm font-bold animate-pulse">Scanning with AI...</span>
+                <Loader2 className="animate-spin" size={20} />
+                <span className="text-sm font-bold">Attaching document...</span>
               </div>
             ) : form.attachedFile ? (
               <div className={`flex items-center justify-center text-${color}-600 gap-2 w-full`}>
@@ -540,7 +576,7 @@ function QuickAddView({ type, selectedCardId, addMovement, setActiveView }) {
             ) : (
               <>
                 <UploadCloud size={20} className={`text-${color}-400 group-hover:scale-110 transition-transform`} />
-                <span className={`text-sm font-medium text-slate-600`}>Scan Document (OCR)</span>
+                <span className={`text-sm font-medium text-slate-600`}>Attach Receipt / Document (PDF or Image)</span>
               </>
             )}
             <input type="file" className="hidden" accept="image/*,.pdf" onChange={handleFileChange} disabled={isScanning} />
@@ -688,7 +724,7 @@ function QuickAddView({ type, selectedCardId, addMovement, setActiveView }) {
 }
 
 function ReceivablesView({ selectedCardId, setConfirmModal }) {
-  const { receivables, addReceivable, collectReceivable, cards } = useFinance();
+  const { receivables, addReceivable, deleteReceivable, collectReceivable, cards } = useFinance();
   const pendingList = receivables.filter(r => r.status === 'pending');
   const completedList = receivables.filter(r => r.status === 'paid');
   const [showAdd, setShowAdd] = useState(false);
@@ -745,13 +781,18 @@ function ReceivablesView({ selectedCardId, setConfirmModal }) {
           <motion.div key={r.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm flex items-center justify-between group hover:border-slate-200 hover:shadow-md">
             <div>
               <p className="text-slate-800 font-medium">{r.description}</p>
-              <p className="text-slate-500 text-xs mt-1 flex items-center gap-1"><CalendarDays size={10} /> Expected: {r.expectedDate || 'No date'}</p>
+              <p className="text-slate-500 text-xs mt-1 flex items-center gap-1"><CalendarDays size={10} /> Expected: {r.expectedDate || (r.dueDate ? String(r.dueDate).split('T')[0] : 'No date')}</p>
             </div>
             <div className="flex flex-col items-end gap-2">
-              <p className="text-emerald-600 font-bold">+${r.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-              <button onClick={() => handleCollect(r)} className="text-[10px] uppercase font-bold tracking-wider px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100 rounded-md transition-colors">
-                Collect
-              </button>
+              <p className="text-emerald-600 font-bold">+${Number(r.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => handleCollect(r)} className="text-[10px] uppercase font-bold tracking-wider px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100 rounded-md transition-colors">
+                  Collect
+                </button>
+                <button onClick={() => deleteReceivable(r.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Delete">
+                  <Trash2 size={13} />
+                </button>
+              </div>
             </div>
           </motion.div>
         )) : (!showAdd && (
@@ -778,11 +819,11 @@ function ReceivablesView({ selectedCardId, setConfirmModal }) {
                     </div>
                     <div>
                       <p className="text-slate-600 font-medium line-through decoration-slate-300">{r.description}</p>
-                      <p className="text-slate-500 text-xs mt-1">Collected on: {r.paidDate || 'N/A'} via {card?.bank || 'Card'}</p>
+                      <p className="text-slate-500 text-xs mt-1">Collected on: {r.paidDate ? String(r.paidDate).split('T')[0] : 'N/A'} via {card?.bank || 'Card'}</p>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <p className="text-slate-400 font-bold">${r.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-slate-400 font-bold">${Number(r.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                   </div>
                 </motion.div>
               );
@@ -795,7 +836,7 @@ function ReceivablesView({ selectedCardId, setConfirmModal }) {
 }
 
 function PayablesView({ selectedCardId, setConfirmModal }) {
-  const { payables, addPayable, payPayable, cards } = useFinance();
+  const { payables, addPayable, deletePayable, payPayable, cards } = useFinance();
   const pendingList = payables.filter(p => p.status === 'pending');
   const completedList = payables.filter(p => p.status === 'paid');
   const [showAdd, setShowAdd] = useState(false);
@@ -853,13 +894,18 @@ function PayablesView({ selectedCardId, setConfirmModal }) {
           <motion.div key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-sm flex items-center justify-between group hover:border-slate-200 hover:shadow-md">
             <div>
               <p className="text-slate-800 font-medium">{p.description}</p>
-              <p className="text-slate-500 text-xs mt-1 flex items-center gap-1"><CalendarDays size={10} /> Due: {p.expectedDate || 'No date'}</p>
+              <p className="text-slate-500 text-xs mt-1 flex items-center gap-1"><CalendarDays size={10} /> Due: {p.expectedDate || (p.dueDate ? String(p.dueDate).split('T')[0] : 'No date')}</p>
             </div>
             <div className="flex flex-col items-end gap-2">
-              <p className="text-rose-600 font-bold">-${p.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-              <button onClick={() => handlePay(p)} className="text-[10px] uppercase font-bold tracking-wider px-3 py-1 bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-100 rounded-md transition-colors">
-                Pay
-              </button>
+              <p className="text-rose-600 font-bold">-${Number(p.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => handlePay(p)} className="text-[10px] uppercase font-bold tracking-wider px-3 py-1 bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-100 rounded-md transition-colors">
+                  Pay
+                </button>
+                <button onClick={() => deletePayable(p.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Delete">
+                  <Trash2 size={13} />
+                </button>
+              </div>
             </div>
           </motion.div>
         )) : (!showAdd && (
@@ -886,11 +932,11 @@ function PayablesView({ selectedCardId, setConfirmModal }) {
                     </div>
                     <div>
                       <p className="text-slate-600 font-medium line-through decoration-slate-300">{p.description}</p>
-                      <p className="text-slate-500 text-xs mt-1">Paid on: {p.paidDate || 'N/A'} via {card?.bank || 'Card'}</p>
+                      <p className="text-slate-500 text-xs mt-1">Paid on: {p.paidDate ? String(p.paidDate).split('T')[0] : 'N/A'} via {card?.bank || 'Card'}</p>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <p className="text-slate-400 font-bold">${p.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-slate-400 font-bold">${Number(p.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                   </div>
                 </motion.div>
               );

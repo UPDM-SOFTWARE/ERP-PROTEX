@@ -127,7 +127,7 @@ export function CreditCard({ card, size = 'md', className = '', showType = true,
           <div>
             {!isSm && <p className="text-white/50 text-[10px] uppercase tracking-widest mb-0.5">Current Balance</p>}
             <p className={`text-white font-bold drop-shadow-md tracking-tight ${isSm ? 'text-lg' : isLg ? 'text-3xl' : 'text-2xl'}`}>
-              ${card.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })} <span className={`${isSm ? 'text-[10px]' : 'text-xs'} font-medium text-white/60`}>USD</span>
+              ${Number(card.balance || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className={`${isSm ? 'text-[10px]' : 'text-xs'} font-medium text-white/60`}>USD</span>
             </p>
           </div>
           {/* Payment Network Logo */}

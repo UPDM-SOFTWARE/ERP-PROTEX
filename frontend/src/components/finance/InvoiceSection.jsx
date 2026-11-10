@@ -304,7 +304,7 @@ const InfiniguardTemplate = ({ data, subtotal, taxAmount, total }) => {
         </View>
       </View>
 
-      <View style={infStyles.infoRow}>
+      <View style={infStyles.infoRow} wrap={false}>
         <View style={infStyles.billToBlock}>
           <Text style={infStyles.billToLabel}>Bill To</Text>
           <Text style={infStyles.clientName}>{data.clientName || 'Client Name'}</Text>
@@ -355,28 +355,32 @@ const InfiniguardTemplate = ({ data, subtotal, taxAmount, total }) => {
       </View>
 
       <View style={infStyles.table}>
-        <View style={infStyles.tableHeader}>
+        <View style={infStyles.tableHeader} minPresenceAhead={40}>
           <Text style={infStyles.thHash}>#</Text>
           <Text style={infStyles.thDesc}>Item & Description</Text>
           <Text style={infStyles.thQty}>Qty</Text>
           <Text style={infStyles.thRate}>Rate</Text>
           <Text style={infStyles.thAmount}>Amount</Text>
         </View>
-        {data.items.map((item, index) => (
-          <View key={index} style={infStyles.tableRow}>
-            <Text style={infStyles.tdHash}>{index + 1}</Text>
-            <Text style={infStyles.tdDesc}>{item.description || 'Item'}</Text>
-            <View style={infStyles.thQty}>
-              <Text style={{ fontSize: 9, color: '#333', textAlign: 'right' }}>{Number(item.quantity).toFixed(2)}</Text>
-              {item.unit && <Text style={{ fontSize: 8, color: '#666', marginTop: 2, textAlign: 'right' }}>{item.unit}</Text>}
+        {data.items.map((item, index) => {
+          const desc = item.description || 'Item';
+          const keepTogether = desc.length < 700;
+          return (
+            <View key={index} style={infStyles.tableRow} wrap={!keepTogether}>
+              <Text style={infStyles.tdHash}>{index + 1}</Text>
+              <Text style={infStyles.tdDesc}>{desc}</Text>
+              <View style={infStyles.thQty}>
+                <Text style={{ fontSize: 9, color: '#333', textAlign: 'right' }}>{Number(item.quantity).toFixed(2)}</Text>
+                {item.unit && <Text style={{ fontSize: 8, color: '#666', marginTop: 2, textAlign: 'right' }}>{item.unit}</Text>}
+              </View>
+              <Text style={infStyles.tdRate}>{formatCurrency(item.price)}</Text>
+              <Text style={infStyles.tdAmount}>{formatCurrency(item.quantity * item.price)}</Text>
             </View>
-            <Text style={infStyles.tdRate}>{formatCurrency(item.price)}</Text>
-            <Text style={infStyles.tdAmount}>{formatCurrency(item.quantity * item.price)}</Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
-      <View style={infStyles.totalsSection}>
+      <View style={infStyles.totalsSection} wrap={false}>
         <View style={infStyles.totalsBlock}>
           <View style={infStyles.totalRow}>
             <Text style={infStyles.totalLabel}>Sub Total</Text>
@@ -401,14 +405,14 @@ const InfiniguardTemplate = ({ data, subtotal, taxAmount, total }) => {
 
       <View style={infStyles.bottomSection}>
         {data.notes && (
-          <View>
+          <View wrap={false}>
             <Text style={infStyles.notesTitle}>Notes</Text>
             <Text style={infStyles.notesText}>{data.notes}</Text>
           </View>
         )}
 
         {data.bankDetails && (
-          <View style={{ marginTop: 10 }}>
+          <View style={{ marginTop: 10 }} wrap={false}>
             <Text style={infStyles.notesTitle}>Payment Options</Text>
             <Text style={infStyles.notesText}>{data.bankDetails}</Text>
           </View>
@@ -416,8 +420,16 @@ const InfiniguardTemplate = ({ data, subtotal, taxAmount, total }) => {
       </View>
 
       <View style={infStyles.termsSection} fixed>
-        <Text style={infStyles.termsTitle}>Terms & Conditions</Text>
-        <Text style={infStyles.termsText}>Invoice currency is USD (United States dollars)</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          <View>
+            <Text style={infStyles.termsTitle}>Terms & Conditions</Text>
+            <Text style={infStyles.termsText}>Invoice currency is USD (United States dollars)</Text>
+          </View>
+          <Text
+            style={{ fontSize: 8, color: '#6b7280' }}
+            render={({ pageNumber, totalPages }) => (totalPages > 1 ? `Page ${pageNumber} of ${totalPages}` : '')}
+          />
+        </View>
       </View>
     </Page>
   );
@@ -722,6 +734,7 @@ export function InvoiceSection({ title }) {
           let msg = 'The invoice was saved in the document vault.';
           if (invoiceData.linkedClientId) {
             addReceivable({
+              clientName: invoiceData.clientName || 'Client',
               description: `Invoice Receivable ${invoiceData.invoiceNumber ? '#' + invoiceData.invoiceNumber : '—'} (${invoiceData.clientName})`,
               amount: total,
               expectedDate: invoiceData.dueDate,

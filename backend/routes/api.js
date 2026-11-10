@@ -14,12 +14,66 @@ const router = express.Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
 const generateToken = (user) => {
+  const ownerId = user.parentId || user.id;
   return jwt.sign(
-    { id: user.id, email: user.email, role: user.role, name: user.name, parentId: user.parentId, companyName: user.companyName },
+    { id: user.id, email: user.email, role: user.role, name: user.name, parentId: user.parentId, ownerId, companyName: user.companyName },
     JWT_SECRET,
     { expiresIn: '24h' }
   );
 };
+
+const formatDateOnly = (d) => {
+  if (!d) return null;
+  const dateObj = d instanceof Date ? d : new Date(d);
+  if (isNaN(dateObj.getTime())) return null;
+  return dateObj.toISOString().split('T')[0];
+};
+
+const mapCard = (c) => ({
+  ...c,
+  balance: Number(c.balance) || 0,
+  isActive: c.isActive !== false,
+  bank: c.name,
+  last4: c.lastFour,
+  type: c.type ? c.type.charAt(0) + c.type.slice(1).toLowerCase() : 'Debit'
+});
+
+const mapMovement = (m) => ({
+  ...m,
+  amount: Number(m.amount) || 0,
+  card: m.card ? mapCard(m.card) : undefined
+});
+
+const mapBudget = (b) => ({
+  ...b,
+  limit: Number(b.limit) || 0,
+  spent: Number(b.spent) || 0
+});
+
+const mapDocument = (d) => ({
+  ...d,
+  date: formatDateOnly(d.createdAt)
+});
+
+const mapReceivable = (r) => ({
+  ...r,
+  amount: Number(r.amount) || 0,
+  expectedDate: formatDateOnly(r.dueDate),
+  paidDate: formatDateOnly(r.paidDate)
+});
+
+const mapPayable = (p) => ({
+  ...p,
+  amount: Number(p.amount) || 0,
+  expectedDate: formatDateOnly(p.dueDate),
+  paidDate: formatDateOnly(p.paidDate)
+});
+
+const mapExpectedExpense = (e) => ({
+  ...e,
+  amount: Number(e.amount) || 0,
+  dueDate: formatDateOnly(e.dueDate) || e.dueDate
+});
 
 // Helper para responder errores
 const handleError = (res, error) => {
@@ -51,46 +105,46 @@ router.get('/cards', async (req, res) => {
       where: { userId: req.user.ownerId },
       orderBy: { createdAt: 'desc' }
     });
-    const mappedCards = cards.map(c => ({
-      ...c,
-      bank: c.name,
-      last4: c.lastFour,
-      type: c.type.charAt(0) + c.type.slice(1).toLowerCase()
-    }));
-    res.json(mappedCards);
+    res.json(cards.map(mapCard));
   } catch (error) { handleError(res, error); }
 });
 
 router.post('/cards', async (req, res) => {
   try {
-    const { bank, type, currency, balance, last4, color } = req.body;
+    const { bank, name, type, currency, balance, last4, lastFour, color, isActive } = req.body;
     const card = await prisma.card.create({
       data: {
-        name: bank || 'Tarjeta',
+        name: bank || name || 'Tarjeta',
         type: type ? type.toUpperCase() : 'DEBIT',
         currency: currency || 'USD',
-        balance: balance || 0,
-        lastFour: last4 || null,
+        balance: Number(balance) || 0,
+        lastFour: last4 || lastFour || null,
         color: color || null,
+        isActive: isActive !== undefined ? Boolean(isActive) : true,
         userId: req.user.ownerId
       }
     });
-    res.json({
-      ...card,
-      bank: card.name,
-      last4: card.lastFour,
-      type: card.type.charAt(0) + card.type.slice(1).toLowerCase()
-    });
+    res.json(mapCard(card));
   } catch (error) { handleError(res, error); }
 });
 
 router.put('/cards/:id', async (req, res) => {
   try {
+    const { bank, name, type, currency, balance, last4, lastFour, color, isActive } = req.body;
+    const data = {};
+    if (bank !== undefined || name !== undefined) data.name = bank || name;
+    if (type !== undefined) data.type = type.toUpperCase();
+    if (currency !== undefined) data.currency = currency;
+    if (balance !== undefined) data.balance = Number(balance);
+    if (last4 !== undefined || lastFour !== undefined) data.lastFour = last4 ?? lastFour;
+    if (color !== undefined) data.color = color;
+    if (isActive !== undefined) data.isActive = Boolean(isActive);
+
     const card = await prisma.card.update({
       where: { id: req.params.id, userId: req.user.ownerId },
-      data: req.body
+      data
     });
-    res.json(card);
+    res.json(mapCard(card));
   } catch (error) { handleError(res, error); }
 });
 
@@ -115,34 +169,66 @@ router.get('/movements', async (req, res) => {
       orderBy: { date: 'desc' },
       include: { card: true }
     });
-    res.json(movements);
+    res.json(movements.map(mapMovement));
   } catch (error) { handleError(res, error); }
 });
 
 router.post('/movements', async (req, res) => {
   try {
     const { cardId, type, amount, description, date, category } = req.body;
+    const normalizedType = (type || 'EXPENSE').toUpperCase();
+    const numericAmount = Number(amount) || 0;
     
     const movement = await prisma.movement.create({
       data: {
-        type, amount, description, category, date: date ? new Date(date) : new Date(),
-        cardId, userId: req.user.ownerId
-      }
+        type: normalizedType,
+        amount: numericAmount,
+        description: description || 'Movimiento',
+        category: category || 'General',
+        date: date ? new Date(date) : new Date(),
+        cardId,
+        userId: req.user.ownerId
+      },
+      include: { card: true }
     });
 
     // Update card balance
     const card = await prisma.card.findUnique({ where: { id: cardId } });
     if (card) {
-      const newBalance = type === 'INCOME' 
-        ? Number(card.balance) + Number(amount)
-        : Number(card.balance) - Number(amount);
+      const newBalance = normalizedType === 'INCOME' 
+        ? Number(card.balance) + numericAmount
+        : Number(card.balance) - numericAmount;
       await prisma.card.update({
         where: { id: cardId },
         data: { balance: newBalance }
       });
     }
 
-    res.json(movement);
+    res.json(mapMovement(movement));
+  } catch (error) { handleError(res, error); }
+});
+
+router.delete('/movements/:id', async (req, res) => {
+  try {
+    const existing = await prisma.movement.findFirst({
+      where: { id: req.params.id, userId: req.user.ownerId }
+    });
+    if (!existing) return res.status(404).json({ error: 'Movimiento no encontrado' });
+
+    const card = await prisma.card.findUnique({ where: { id: existing.cardId } });
+    if (card) {
+      const amount = Number(existing.amount) || 0;
+      const revertedBalance = existing.type === 'INCOME'
+        ? Number(card.balance) - amount
+        : Number(card.balance) + amount;
+      await prisma.card.update({
+        where: { id: card.id },
+        data: { balance: revertedBalance }
+      });
+    }
+
+    await prisma.movement.delete({ where: { id: existing.id } });
+    res.json({ success: true });
   } catch (error) { handleError(res, error); }
 });
 
@@ -200,7 +286,7 @@ router.get('/budgets', async (req, res) => {
       where: { userId: req.user.ownerId },
       orderBy: { createdAt: 'desc' }
     });
-    res.json(budgets);
+    res.json(budgets.map(mapBudget));
   } catch (error) { handleError(res, error); }
 });
 
@@ -216,7 +302,7 @@ router.post('/budgets', async (req, res) => {
         userId: req.user.ownerId
       }
     });
-    res.json({ ...budget, limit: Number(budget.limit), spent: Number(budget.spent) });
+    res.json(mapBudget(budget));
   } catch (error) { handleError(res, error); }
 });
 
@@ -226,7 +312,7 @@ router.put('/budgets/:id', async (req, res) => {
       where: { id: req.params.id, userId: req.user.ownerId },
       data: req.body
     });
-    res.json(budget);
+    res.json(mapBudget(budget));
   } catch (error) { handleError(res, error); }
 });
 
@@ -246,7 +332,7 @@ router.get('/documents', async (req, res) => {
       where: { userId: req.user.ownerId },
       orderBy: { createdAt: 'desc' }
     });
-    res.json(docs);
+    res.json(docs.map(mapDocument));
   } catch (error) { handleError(res, error); }
 });
 
@@ -296,7 +382,7 @@ router.post('/documents', async (req, res) => {
         userId: req.user.ownerId
       }
     });
-    res.json(doc);
+    res.json(mapDocument(doc));
   } catch (error) { handleError(res, error); }
 });
 
@@ -326,15 +412,21 @@ router.put('/documents/:id', async (req, res) => {
     }
 
     const doc = await prisma.document.update({ where: { id: existing.id }, data });
-    res.json(doc);
+    res.json(mapDocument(doc));
   } catch (error) { handleError(res, error); }
 });
 
 router.delete('/documents/:id', async (req, res) => {
   try {
-    await prisma.document.delete({
+    const existing = await prisma.document.findFirst({
       where: { id: req.params.id, userId: req.user.ownerId }
     });
+    if (existing) {
+      deleteUploadedFile(existing.fileUrl);
+      await prisma.document.delete({
+        where: { id: existing.id }
+      });
+    }
     res.json({ success: true });
   } catch (error) { handleError(res, error); }
 });
@@ -367,7 +459,7 @@ router.get('/expected-expenses', async (req, res) => {
       where: { userId: req.user.ownerId },
       orderBy: { dueDate: 'asc' }
     });
-    res.json(expenses);
+    res.json(expenses.map(mapExpectedExpense));
   } catch (error) { handleError(res, error); }
 });
 
@@ -376,7 +468,7 @@ router.post('/expected-expenses', async (req, res) => {
     const expense = await prisma.expectedExpense.create({
       data: { ...req.body, dueDate: new Date(req.body.dueDate), userId: req.user.ownerId }
     });
-    res.json(expense);
+    res.json(mapExpectedExpense(expense));
   } catch (error) { handleError(res, error); }
 });
 
@@ -395,7 +487,7 @@ router.put('/expected-expenses/:id/pay', async (req, res) => {
       where: { id: req.params.id, userId: req.user.ownerId },
       data: { status: 'paid' }
     });
-    res.json(expense);
+    res.json(mapExpectedExpense(expense));
   } catch (error) { handleError(res, error); }
 });
 
@@ -406,7 +498,7 @@ router.get('/receivables', async (req, res) => {
       where: { userId: req.user.ownerId },
       orderBy: { dueDate: 'asc' }
     });
-    res.json(items);
+    res.json(items.map(mapReceivable));
   } catch (error) { handleError(res, error); }
 });
 
@@ -422,7 +514,7 @@ router.post('/receivables', async (req, res) => {
         userId: req.user.ownerId
       }
     });
-    res.json(item);
+    res.json(mapReceivable(item));
   } catch (error) { handleError(res, error); }
 });
 
@@ -432,7 +524,16 @@ router.put('/receivables/:id/collect', async (req, res) => {
       where: { id: req.params.id, userId: req.user.ownerId },
       data: { status: 'paid', paidDate: new Date(), cardId: req.body.cardId }
     });
-    res.json(item);
+    res.json(mapReceivable(item));
+  } catch (error) { handleError(res, error); }
+});
+
+router.delete('/receivables/:id', async (req, res) => {
+  try {
+    await prisma.receivable.delete({
+      where: { id: req.params.id, userId: req.user.ownerId }
+    });
+    res.json({ success: true });
   } catch (error) { handleError(res, error); }
 });
 
@@ -443,7 +544,7 @@ router.get('/payables', async (req, res) => {
       where: { userId: req.user.ownerId },
       orderBy: { dueDate: 'asc' }
     });
-    res.json(items);
+    res.json(items.map(mapPayable));
   } catch (error) { handleError(res, error); }
 });
 
@@ -459,7 +560,7 @@ router.post('/payables', async (req, res) => {
         userId: req.user.ownerId
       }
     });
-    res.json(item);
+    res.json(mapPayable(item));
   } catch (error) { handleError(res, error); }
 });
 
@@ -469,7 +570,48 @@ router.put('/payables/:id/pay', async (req, res) => {
       where: { id: req.params.id, userId: req.user.ownerId },
       data: { status: 'paid', paidDate: new Date(), cardId: req.body.cardId }
     });
-    res.json(item);
+    res.json(mapPayable(item));
+  } catch (error) { handleError(res, error); }
+});
+
+router.delete('/payables/:id', async (req, res) => {
+  try {
+    await prisma.payable.delete({
+      where: { id: req.params.id, userId: req.user.ownerId }
+    });
+    res.json({ success: true });
+  } catch (error) { handleError(res, error); }
+});
+
+// --- PROFILE ---
+router.put('/profile', async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    const data = {};
+    if (typeof name === 'string' && name.trim()) data.name = name.trim();
+    if (typeof email === 'string' && email.trim()) {
+      const normalizedEmail = email.trim();
+      const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+      if (existing && existing.id !== req.user.id) {
+        return res.status(400).json({ error: 'Ese correo o usuario ya está en uso.' });
+      }
+      data.email = normalizedEmail;
+    }
+    if (typeof password === 'string' && password.length >= 6) {
+      data.password = await bcrypt.hash(password, 10);
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data
+    });
+    const { password: _p, ...userWithoutPassword } = updatedUser;
+    const ownerId = updatedUser.parentId || updatedUser.id;
+    res.json({
+      success: true,
+      token: generateToken(updatedUser),
+      user: { ...userWithoutPassword, ownerId }
+    });
   } catch (error) { handleError(res, error); }
 });
 
