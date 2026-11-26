@@ -42,14 +42,7 @@ export function LoginScreen() {
       >
         {/* Left Brand Panel */}
         <div className="md:col-span-5 bg-gradient-to-b from-slate-50 via-white to-rose-50/30 p-8 sm:p-10 flex flex-col items-center justify-between border-b md:border-b-0 md:border-r border-slate-100 relative overflow-hidden">
-          <div className="w-full flex items-center justify-between">
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-[#B9252B] bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#B9252B]" />
-              Enterprise Portal
-            </span>
-          </div>
-
-          <div className="my-6 md:my-0 flex flex-col items-center text-center">
+          <div className="flex-1 flex flex-col items-center justify-center text-center py-4 md:py-0">
             <div className="w-44 h-44 sm:w-52 sm:h-52 flex items-center justify-center">
               <img
                 src={ErpUsLogo}
