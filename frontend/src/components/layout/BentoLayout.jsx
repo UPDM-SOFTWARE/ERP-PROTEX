@@ -162,19 +162,6 @@ export function BentoLayout() {
     driverObj.drive();
   };
 
-  const themeStyles = {
-    sky: { text: 'group-hover:text-sky-500', border: 'hover:border-sky-300' },
-    emerald: { text: 'group-hover:text-emerald-500', border: 'hover:border-emerald-300' },
-    amber: { text: 'group-hover:text-amber-500', border: 'hover:border-amber-300' },
-    indigo: { text: 'group-hover:text-indigo-500', border: 'hover:border-indigo-300' },
-    violet: { text: 'group-hover:text-violet-500', border: 'hover:border-violet-300' },
-    fuchsia: { text: 'group-hover:text-fuchsia-500', border: 'hover:border-fuchsia-300' },
-    pink: { text: 'group-hover:text-pink-500', border: 'hover:border-pink-300' },
-    teal: { text: 'group-hover:text-teal-500', border: 'hover:border-teal-300' },
-    slate: { text: 'group-hover:text-slate-800', border: 'hover:border-slate-300' },
-    blue: { text: 'group-hover:text-blue-500', border: 'hover:border-blue-300' },
-  };
-
   const SECTIONS = [
     { id: 'reports',   title: t.sections.reports,   icon: BarChart3,      component: ReportsSection, theme: 'sky' },
     { id: 'movements', title: t.sections.movements, icon: ArrowRightLeft, component: MovementsSection, theme: 'emerald' },
@@ -195,7 +182,6 @@ export function BentoLayout() {
   const gridSections = activeSections.filter(s => s.id !== 'settings');
 
   const selected = activeSections.find(s => s.id === selectedId);
-  const avatar = user?.name ? user.name.substring(0, 2).toUpperCase() : 'U';
 
   return (
     <div className="h-screen w-full flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden p-4 lg:p-6 gap-4 lg:gap-6 bg-slate-50 lg:bg-transparent custom-scrollbar">
@@ -206,8 +192,31 @@ export function BentoLayout() {
         {/* Perfil */}
         <Card className="p-5 shrink-0" id="tour-profile">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-white font-bold text-base shrink-0">
-              {avatar}
+            <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-end justify-center text-slate-500 shrink-0 overflow-hidden" title={user?.name || 'Perfil'}>
+              <svg
+                viewBox="0 0 24 24"
+                className="w-10 h-10"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.15"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                {/* Cabeza */}
+                <circle cx="12" cy="8.2" r="3.6" />
+                {/* Ojos felices */}
+                <path d="M10.6 7.9h.01" strokeWidth="1.5" />
+                <path d="M13.4 7.9h.01" strokeWidth="1.5" />
+                {/* Sonrisa */}
+                <path d="M10.4 9.5c.45.6 1 .9 1.6.9s1.15-.3 1.6-.9" />
+                {/* Hombros asentados */}
+                <path d="M4.5 24v-2.2c0-3.2 3.4-5.3 7.5-5.3s7.5 2.1 7.5 5.3V24" />
+                {/* Cuello y corbata */}
+                <path d="M10.3 16.6L12 18.2l1.7-1.6" />
+                <path d="M12 18.2l-1 3.3 1 2.2 1-2.2-1-3.3z" />
+              </svg>
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-slate-800 text-sm font-semibold truncate">{user?.name}</p>
@@ -325,7 +334,6 @@ export function BentoLayout() {
               <div className="grid grid-cols-2 sm:grid-cols-3 auto-rows-[110px] lg:auto-rows-fr gap-3 lg:gap-5 w-full h-full overflow-visible lg:overflow-y-auto no-scrollbar p-2 lg:p-6 lg:-m-6">
                 {gridSections.map((section) => {
                   const Icon = section.icon;
-                  const theme = themeStyles[section.theme];
                   return (
                     <motion.button
                       id={`tour-card-${section.id}`}
@@ -338,7 +346,7 @@ export function BentoLayout() {
                           setSelectedId(section.id);
                         }
                       }}
-                      className={`relative overflow-hidden flex flex-col items-center justify-center gap-3 rounded-3xl cursor-pointer bg-white group transition-colors duration-200 hover:bg-slate-50 ${theme.border}`}
+                      className="relative overflow-hidden flex flex-col items-center justify-center gap-3 rounded-3xl cursor-pointer bg-white group transition-colors duration-200 hover:bg-slate-50"
                       style={{
                         boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
                         border: '1px solid rgba(0,0,0,0.05)',
@@ -350,11 +358,11 @@ export function BentoLayout() {
                       }}
                       whileTap={{ scale: 0.98 }}
                     >
-                      <motion.div layoutId={`icon-${section.id}`} className={`text-slate-400 transition-colors duration-200 ${theme.text}`}>
+                      <motion.div layoutId={`icon-${section.id}`} className="text-slate-400 transition-colors duration-200 group-hover:text-red-500">
                         <Icon className="w-7 h-7 lg:w-8 lg:h-8" strokeWidth={1.5} />
                       </motion.div>
 
-                      <motion.span layoutId={`title-${section.id}`} className={`text-xs lg:text-sm font-semibold text-slate-500 transition-colors duration-200 text-center px-2 ${theme.text}`}>
+                      <motion.span layoutId={`title-${section.id}`} className="text-xs lg:text-sm font-semibold text-slate-500 transition-colors duration-200 text-center px-2 group-hover:text-red-500">
                         {section.title}
                       </motion.span>
                     </motion.button>
