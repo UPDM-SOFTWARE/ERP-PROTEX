@@ -28,46 +28,52 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 p-4 sm:p-6 bg-gradient-to-br from-slate-100 via-white to-rose-50/40 overflow-y-auto">
-      {/* Subtle decorative ambient accents */}
-      <div className="pointer-events-none fixed -top-32 -right-32 w-96 h-96 rounded-full bg-[#B9252B]/5 blur-3xl" />
-      <div className="pointer-events-none fixed -bottom-32 -left-32 w-96 h-96 rounded-full bg-slate-900/5 blur-3xl" />
+    <div className="fixed inset-0 z-50 w-full h-full bg-white grid grid-cols-1 lg:grid-cols-2 overflow-y-auto">
+      {/* Left Brand Panel (Full height) */}
+      <div className="relative bg-gradient-to-br from-slate-50 via-white to-rose-50/50 border-b lg:border-b-0 lg:border-r border-slate-200/70 p-8 sm:p-12 lg:p-16 flex flex-col items-center justify-between overflow-hidden min-h-[260px] lg:min-h-full">
+        {/* Subtle ambient accents */}
+        <div className="pointer-events-none absolute -top-24 -left-24 w-96 h-96 rounded-full bg-[#B9252B]/5 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 -right-24 w-96 h-96 rounded-full bg-slate-900/5 blur-3xl" />
 
-      <motion.div
-        initial={{ opacity: 0, y: 18, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="w-full max-w-[860px] bg-white rounded-[2rem] overflow-hidden border border-slate-200/80 grid grid-cols-1 md:grid-cols-12"
-        style={{ boxShadow: '0 28px 70px -15px rgba(15, 23, 42, 0.14)' }}
-      >
-        {/* Left Brand Panel */}
-        <div className="md:col-span-5 bg-gradient-to-b from-slate-50 via-white to-rose-50/30 p-8 sm:p-10 flex flex-col items-center justify-between border-b md:border-b-0 md:border-r border-slate-100 relative overflow-hidden">
-          <div className="flex-1 flex flex-col items-center justify-center text-center py-4 md:py-0">
-            <div className="w-44 h-44 sm:w-52 sm:h-52 flex items-center justify-center">
-              <img
-                src={ErpUsLogo}
-                alt="ERP US Logo"
-                className="w-full h-full object-contain drop-shadow-sm select-none"
-              />
-            </div>
-            <p className="text-xs font-semibold text-slate-400 tracking-[0.22em] uppercase mt-1">
-              Finance & Operations
-            </p>
-          </div>
+        <div className="w-full" />
 
-          <div className="w-full pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-400">
-            <ShieldCheck size={14} className="text-[#B9252B]" />
-            <span>Encrypted Session · US Operations</span>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+          className="relative z-10 flex flex-col items-center text-center my-4 lg:my-0"
+        >
+          <div className="w-44 h-44 sm:w-56 sm:h-56 lg:w-72 lg:h-72 flex items-center justify-center">
+            <img
+              src={ErpUsLogo}
+              alt="ERP US Logo"
+              className="w-full h-full object-contain drop-shadow-sm select-none"
+            />
           </div>
+          <p className="text-xs sm:text-sm font-semibold text-slate-400 tracking-[0.26em] uppercase mt-2">
+            Finance & Operations
+          </p>
+        </motion.div>
+
+        <div className="relative z-10 w-full pt-4 flex items-center justify-center gap-2 text-xs text-slate-400">
+          <ShieldCheck size={14} className="text-[#B9252B]" />
+          <span>Encrypted Session · US Operations</span>
         </div>
+      </div>
 
-        {/* Right Form Panel */}
-        <div className="md:col-span-7 p-8 sm:p-10 flex flex-col justify-center">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+      {/* Right Form Panel (Full height) */}
+      <div className="bg-white flex items-center justify-center p-8 sm:p-12 lg:p-16">
+        <motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: 'easeOut', delay: 0.05 }}
+          className="w-full max-w-md"
+        >
+          <div className="mb-8">
+            <h2 className="text-3xl font-bold text-slate-900 tracking-tight">
               {mode === 'login' ? 'Welcome back' : 'Create your account'}
             </h2>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-sm text-slate-500 mt-1.5">
               {mode === 'login'
                 ? 'Sign in to access your financial workspace.'
                 : 'Enter your credentials and invitation key.'}
@@ -111,7 +117,7 @@ export function LoginScreen() {
                   type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm placeholder:text-slate-300 focus:outline-none focus:border-[#B9252B] focus:ring-2 focus:ring-rose-100 focus:bg-white transition-all"
+                  className="w-full pl-10 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm placeholder:text-slate-300 focus:outline-none focus:border-[#B9252B] focus:ring-2 focus:ring-rose-100 focus:bg-white transition-all"
                   placeholder={mode === 'register' ? 'username' : 'admin'}
                   required
                 />
@@ -128,7 +134,7 @@ export function LoginScreen() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm placeholder:text-slate-300 focus:outline-none focus:border-[#B9252B] focus:ring-2 focus:ring-rose-100 focus:bg-white transition-all"
+                  className="w-full pl-10 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm placeholder:text-slate-300 focus:outline-none focus:border-[#B9252B] focus:ring-2 focus:ring-rose-100 focus:bg-white transition-all"
                   placeholder="••••••••"
                   minLength={mode === 'register' ? 6 : undefined}
                   required
@@ -147,7 +153,7 @@ export function LoginScreen() {
                     type="text"
                     value={accessKey}
                     onChange={(e) => setAccessKey(e.target.value.toUpperCase())}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm font-mono tracking-wider placeholder:text-slate-300 focus:outline-none focus:border-[#B9252B] focus:ring-2 focus:ring-rose-100 focus:bg-white transition-all uppercase"
+                    className="w-full pl-10 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm font-mono tracking-wider placeholder:text-slate-300 focus:outline-none focus:border-[#B9252B] focus:ring-2 focus:ring-rose-100 focus:bg-white transition-all uppercase"
                     placeholder="PROTEX-XXXX-XXXX"
                     required
                   />
@@ -166,8 +172,8 @@ export function LoginScreen() {
               {!loading && <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />}
             </button>
           </form>
-        </div>
-      </motion.div>
+        </motion.div>
+      </div>
     </div>
   );
 }
