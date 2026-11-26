@@ -1,19 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
+import { API_URL } from '../utils/apiClient';
 
 const AuthContext = createContext();
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3001/api');
-
-// --- Fetch Interceptor for 401 Expirations ---
-const originalFetch = window.fetch;
-window.fetch = async function(...args) {
-  const response = await originalFetch.apply(this, args);
-  const url = args[0].toString();
-  if ((response.status === 401 || response.status === 403) && !url.includes('/auth/login') && !url.includes('/auth/register')) {
-    window.dispatchEvent(new Event('auth:unauthorized'));
-  }
-  return response;
-};
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -26,8 +15,13 @@ export function AuthProvider({ children }) {
     const storedUser = localStorage.getItem('user');
 
     if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      try {
+        setToken(storedToken);
+        setUser(JSON.parse(storedUser));
+      } catch {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
     }
     setLoading(false);
 
@@ -100,11 +94,17 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('user');
   };
 
-  const updateUser = (newUserData) => {
-    const updatedUser = { ...user, ...newUserData };
-    setUser(updatedUser);
-    localStorage.setItem('user', JSON.stringify(updatedUser));
-  };
+  const updateUser = useCallback((newUserData, newToken = null) => {
+    setUser((prev) => {
+      const updatedUser = { ...prev, ...newUserData };
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      return updatedUser;
+    });
+    if (newToken) {
+      setToken(newToken);
+      localStorage.setItem('token', newToken);
+    }
+  }, []);
 
   const value = {
     user,

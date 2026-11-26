@@ -6,9 +6,12 @@ import {
   Edit2, Save, FileEdit
 } from 'lucide-react';
 import { useFinance } from '../../context/FinanceContext';
+import { useAuth } from '../../context/AuthContext';
+import { resolveProtectedFileUrl } from '../../utils/apiClient';
 
 export function VaultSection({ title, onNavigate }) {
   const { documents, addDocument, deleteDocument, updateDocument, startEditingInvoice } = useFinance();
+  const { token } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState('All'); // 'All', 'Created Invoices', 'Scanned', 'Other'
   
@@ -40,13 +43,7 @@ export function VaultSection({ title, onNavigate }) {
     return 'Other';
   };
 
-  const resolveFileUrl = (url) => {
-    if (!url) return '';
-    if (url.includes('/uploads/')) {
-      return '/uploads/' + url.split('/uploads/')[1];
-    }
-    return url;
-  };
+  const resolveFileUrl = (url) => resolveProtectedFileUrl(url, token);
 
   const isInvoiceDocument = (doc) => {
     if (!doc) return false;

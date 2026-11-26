@@ -89,12 +89,10 @@ export function TeamSection() {
       });
       const data = await res.json();
       if (res.ok) {
-        if (data.token) localStorage.setItem('token', data.token);
         if (data.user) {
-          localStorage.setItem('user', JSON.stringify(data.user));
-          updateUser(data.user);
+          updateUser(data.user, data.token || null);
         } else {
-          updateUser({ companyName: data.companyName, companyLogo: data.companyLogo });
+          updateUser({ companyName: data.companyName, companyLogo: data.companyLogo }, data.token || null);
         }
         toast.success('Empresa guardada');
         setCompanyName(data.companyName);

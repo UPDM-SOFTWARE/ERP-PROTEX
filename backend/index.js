@@ -2,7 +2,6 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -11,31 +10,133 @@ import { Server } from 'socket.io';
 import http from 'http';
 import prisma from './lib/prisma.js';
 import apiRouter from './routes/api.js';
+import { generateToken, verifyToken, authenticateToken, requireAdmin } from './lib/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+const corsOptions = allowedOrigins.length > 0
+  ? {
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        return callback(new Error('Origen no permitido por CORS'));
+      },
+      credentials: true
+    }
+  : { origin: true, credentials: true };
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: '*' }
+  cors: allowedOrigins.length > 0
+    ? { origin: allowedOrigins, credentials: true }
+    : { origin: '*' }
 });
 
 app.set('io', io);
 app.set('trust proxy', true);
 const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
 
-app.use(cors()); // Allow all origins
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '50mb' }));
+
+// --- Rate Limiter en memoria para rutas de autenticación ---
+const authRateBuckets = new Map();
+const AUTH_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_MAX_REQUESTS = 25;
+
+const authRateLimiter = (req, res, next) => {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const now = Date.now();
+  const entry = authRateBuckets.get(ip);
+
+  if (!entry || now > entry.resetAt) {
+    authRateBuckets.set(ip, { count: 1, resetAt: now + AUTH_WINDOW_MS });
+    return next();
+  }
+
+  entry.count += 1;
+  if (entry.count > AUTH_MAX_REQUESTS) {
+    const retryAfterSec = Math.ceil((entry.resetAt - now) / 1000);
+    res.set('Retry-After', String(retryAfterSec));
+    return res.status(429).json({ error: 'Demasiados intentos. Intenta de nuevo en unos minutos.' });
+  }
+  return next();
+};
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of authRateBuckets.entries()) {
+    if (now > entry.resetAt) authRateBuckets.delete(ip);
+  }
+}, AUTH_WINDOW_MS).unref();
 
 // Ensure uploads directory exists (supports Railway Volume via RAILWAY_VOLUME_MOUNT_PATH or UPLOADS_DIR)
 const uploadsDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-// Serve uploads directory statically
-app.use('/uploads', express.static(uploadsDir));
+
+// Servir archivos subidos SOLO a usuarios autenticados dueños del documento
+app.get('/uploads/:filename', async (req, res) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const headerToken = authHeader && authHeader.split(' ')[1];
+    const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+    const token = headerToken || queryToken;
+
+    if (!token) {
+      return res.status(401).json({ error: 'Token requerido para acceder a archivos' });
+    }
+
+    let user;
+    try {
+      user = verifyToken(token);
+    } catch {
+      return res.status(401).json({ error: 'Token inválido o expirado' });
+    }
+
+    const safeFileName = path.basename(req.params.filename || '');
+    if (!safeFileName || safeFileName !== req.params.filename) {
+      return res.status(400).json({ error: 'Nombre de archivo inválido' });
+    }
+
+    const doc = await prisma.document.findFirst({
+      where: {
+        userId: user.ownerId,
+        fileUrl: { endsWith: `/uploads/${safeFileName}` }
+      },
+      select: { id: true, type: true, name: true }
+    });
+
+    if (!doc) {
+      return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
+
+    const filePath = path.join(uploadsDir, safeFileName);
+    const resolvedUploads = path.resolve(uploadsDir);
+    const resolvedFile = path.resolve(filePath);
+    if (!resolvedFile.startsWith(resolvedUploads + path.sep) || !fs.existsSync(resolvedFile)) {
+      return res.status(404).json({ error: 'Archivo no disponible en disco' });
+    }
+
+    if (doc.type) {
+      res.type(doc.type);
+    }
+    res.set('Cache-Control', 'private, max-age=3600');
+    return res.sendFile(resolvedFile);
+  } catch (error) {
+    console.error('Error serving upload:', error);
+    return res.status(500).json({ error: 'Error al obtener el archivo' });
+  }
+});
 
 // --- Inicializar Super Admin ---
 async function initSuperAdmin() {
@@ -83,34 +184,13 @@ async function initSuperAdmin() {
   }
 }
 
-// --- Middleware para verificar Token ---
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  
-  if (!token) return res.status(401).json({ error: 'Token requerido' });
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Token inválido' });
-    req.user = user;
-    req.user.ownerId = user.parentId || user.id;
-    next();
-  });
-};
-
-const requireAdmin = (req, res, next) => {
-  if (req.user?.role !== 'ADMIN' && req.user?.email !== 'admin') {
-    return res.status(403).json({ error: 'Acceso denegado. Requiere rol de Administrador.' });
-  }
-  next();
-};
-
 // --- Rutas de Autenticación ---
 
 // LOGIN
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authRateLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = typeof req.body.email === 'string' ? req.body.email.trim() : '';
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
     
     if (!email || !password) {
       return res.status(400).json({ error: 'Email y contraseña son requeridos' });
@@ -134,13 +214,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const ownerId = user.parentId || user.id;
-
-    // Generar JWT
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, name: user.name, parentId: user.parentId, ownerId, companyName: user.companyName },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = generateToken(user);
 
     // No enviar la contraseña al cliente
     const { password: _, ...userWithoutPassword } = user;
@@ -153,11 +227,11 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // REGISTER CON KEY
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authRateLimiter, async (req, res) => {
   try {
-    const email = (req.body.email || '').trim();
-    const password = req.body.password || '';
-    const key = (req.body.key || '').trim().toUpperCase();
+    const email = typeof req.body.email === 'string' ? req.body.email.trim() : '';
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
+    const key = typeof req.body.key === 'string' ? req.body.key.trim().toUpperCase() : '';
 
     if (!email || !password || !key) {
       return res.status(400).json({ error: 'Usuario, contraseña y key son requeridos' });
@@ -204,11 +278,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const user = result.user;
     const ownerId = user.parentId || user.id;
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, name: user.name, parentId: user.parentId, ownerId, companyName: user.companyName },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = generateToken(user);
 
     const { password: _, ...userWithoutPassword } = user;
     res.status(201).json({ token, user: { ...userWithoutPassword, ownerId } });
@@ -366,10 +436,24 @@ if (fs.existsSync(frontendDistPath)) {
   });
 }
 
+// Autenticar conexiones de Socket.IO con JWT y unir solo a la sala del propio ownerId
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.split(' ')[1];
+  if (!token) {
+    return next(new Error('Token requerido'));
+  }
+  try {
+    socket.user = verifyToken(token);
+    return next();
+  } catch {
+    return next(new Error('Token inválido'));
+  }
+});
+
 io.on('connection', (socket) => {
-  socket.on('joinRoom', (ownerId) => {
-    socket.join(ownerId);
-  });
+  if (socket.user?.ownerId) {
+    socket.join(socket.user.ownerId);
+  }
 });
 
 // Inicializar y arrancar servidor

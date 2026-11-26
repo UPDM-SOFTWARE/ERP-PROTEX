@@ -31,7 +31,7 @@ export function LoginScreen() {
   return (
     <div className="fixed inset-0 z-50 w-full h-full bg-white grid grid-cols-1 lg:grid-cols-12 overflow-y-auto">
       {/* Left Brand Panel — Pure White Architectural Canvas (logo blends natively) */}
-      <div className="lg:col-span-6 relative bg-white border-b lg:border-b-0 lg:border-r border-slate-200/80 p-8 sm:p-12 lg:p-16 flex flex-col justify-between overflow-hidden">
+      <div className="lg:col-span-6 relative bg-white p-8 sm:p-12 lg:p-16 flex flex-col justify-between overflow-hidden">
         {/* Subtle architectural grid faded at edges */}
         <div
           className="pointer-events-none absolute inset-0"
@@ -46,12 +46,9 @@ export function LoginScreen() {
 
         {/* Top minimal bar */}
         <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#B9252B]" />
-            <span className="text-xs font-bold tracking-[0.22em] uppercase text-slate-800">
-              ERP US
-            </span>
-          </div>
+          <span className="text-xs font-semibold tracking-[0.2em] uppercase text-slate-400">
+            by UPDM
+          </span>
           <span className="text-[11px] font-medium text-slate-400 tracking-wider uppercase">
             Finance & Operations
           </span>
@@ -118,9 +115,8 @@ export function LoginScreen() {
                   key={tab}
                   type="button"
                   onClick={() => setMode(tab)}
-                  className={`relative z-10 py-2.5 rounded-lg text-xs font-semibold transition-colors ${
-                    active ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
-                  }`}
+                  className={`relative z-10 py-2.5 rounded-lg text-xs font-semibold transition-colors ${active ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                    }`}
                 >
                   {active && (
                     <motion.div
@@ -212,7 +208,7 @@ export function LoginScreen() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-4 py-3.5 bg-slate-900 hover:bg-[#B9252B] active:scale-[0.99] text-white rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 group disabled:opacity-50 shadow-sm"
+              className="w-full mt-4 py-3.5 bg-[#B9252B] hover:bg-[#9E1F24] active:scale-[0.99] text-white rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 group disabled:opacity-50 shadow-sm"
             >
               {loading
                 ? (mode === 'login' ? 'Signing in…' : 'Creating account…')

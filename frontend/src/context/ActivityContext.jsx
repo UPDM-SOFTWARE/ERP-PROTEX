@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { useAuth } from './AuthContext';
+import { apiFetch } from '../utils/apiClient';
 
 const ActivityContext = createContext(null);
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3001/api');
 
 export const ACTIVITY_TYPES = {
   MOVEMENT_ADDED:   'movement_added',
@@ -23,31 +23,23 @@ export function ActivityProvider({ children }) {
 
   useEffect(() => {
     if (token && user) {
-      fetch(`${API_URL}/activity`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          // Parse dates since JSON doesn't keep Date objects
-          setActivities(data.map(d => ({ ...d, timestamp: new Date(d.createdAt) })));
-        }
-      })
-      .catch(console.error);
+      apiFetch('/activity', { token })
+        .then(data => {
+          if (Array.isArray(data)) {
+            setActivities(data.map(d => ({ ...d, timestamp: new Date(d.createdAt) })));
+          }
+        })
+        .catch(console.error);
     }
   }, [token, user]);
 
   const logActivity = useCallback(async ({ type, title, description }) => {
     try {
-      const res = await fetch(`${API_URL}/activity`, {
+      const newLog = await apiFetch('/activity', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        token,
         body: JSON.stringify({ type, title, description })
       });
-      const newLog = await res.json();
       setActivities(prev => [{ ...newLog, timestamp: new Date(newLog.createdAt) }, ...prev].slice(0, 50));
     } catch (e) {
       console.error("Failed to log activity", e);

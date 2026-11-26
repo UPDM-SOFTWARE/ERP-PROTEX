@@ -57,11 +57,10 @@ export function SettingsSection() {
         toast.error(data.error || 'Error al guardar el perfil');
         return;
       }
-      if (data.token) localStorage.setItem('token', data.token);
       if (data.user) {
-        updateUser(data.user);
+        updateUser(data.user, data.token || null);
       } else {
-        updateUser({ name: profileData.name, email: profileData.email });
+        updateUser({ name: profileData.name, email: profileData.email }, data.token || null);
       }
       toast.success(t.settings.profile.title + ' guardado');
     } catch (err) {

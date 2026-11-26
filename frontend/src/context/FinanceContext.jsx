@@ -2,9 +2,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useActivity, ACTIVITY_TYPES } from './ActivityContext';
 import { useAuth } from './AuthContext';
 import { io } from 'socket.io-client';
+import { apiFetch, BACKEND_ORIGIN } from '../utils/apiClient';
 
 const FinanceContext = createContext(null);
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3001/api');
 
 export function FinanceProvider({ children }) {
   const { logActivity } = useActivity();
@@ -22,66 +22,69 @@ export function FinanceProvider({ children }) {
   const [budgetCardIds, setBudgetCardIds] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Helper fetch function with authorization
-  const apiCall = async (endpoint, options = {}) => {
-    const res = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        ...options.headers,
-      }
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
-  };
+  const apiCall = useCallback(
+    (endpoint, options = {}) => apiFetch(endpoint, { ...options, token }),
+    [token]
+  );
 
-  const fetchAllData = useCallback(() => {
-    Promise.all([
-      apiCall('/cards'),
-      apiCall('/movements'),
-      apiCall('/clients'),
-      apiCall('/budgets'),
-      apiCall('/documents'),
-      apiCall('/expected-expenses'),
-      apiCall('/receivables'),
-      apiCall('/payables')
-    ]).then(([c, m, cl, b, d, e, r, p]) => {
-      setCards(c);
-      setBudgetCardIds(c.map(card => card.id));
-      setMovements(m);
-      setClients(cl);
-      setBudgets(b);
-      setDocuments(d);
-      setExpectedExpenses(e);
-      setReceivables(r);
-      setPayables(p);
-      setLoading(false);
-    }).catch(err => {
-      console.error("Error loading finance data:", err);
-      setLoading(false);
-    });
-  }, [token]);
+  const fetchResources = useCallback((resources = ['all']) => {
+    const fetchAll = !Array.isArray(resources) || resources.includes('all');
+    const tasks = [];
+
+    if (fetchAll || resources.includes('cards')) {
+      tasks.push(
+        apiCall('/cards').then((c) => {
+          setCards(c);
+          setBudgetCardIds((prev) => (prev.length === 0 ? c.map((card) => card.id) : prev));
+        })
+      );
+    }
+    if (fetchAll || resources.includes('movements')) {
+      tasks.push(apiCall('/movements').then(setMovements));
+    }
+    if (fetchAll || resources.includes('clients')) {
+      tasks.push(apiCall('/clients').then(setClients));
+    }
+    if (fetchAll || resources.includes('budgets')) {
+      tasks.push(apiCall('/budgets').then(setBudgets));
+    }
+    if (fetchAll || resources.includes('documents')) {
+      tasks.push(apiCall('/documents').then(setDocuments));
+    }
+    if (fetchAll || resources.includes('expected-expenses')) {
+      tasks.push(apiCall('/expected-expenses').then(setExpectedExpenses));
+    }
+    if (fetchAll || resources.includes('receivables')) {
+      tasks.push(apiCall('/receivables').then(setReceivables));
+    }
+    if (fetchAll || resources.includes('payables')) {
+      tasks.push(apiCall('/payables').then(setPayables));
+    }
+
+    return Promise.all(tasks)
+      .catch((err) => {
+        console.error('Error loading finance data:', err);
+      })
+      .finally(() => {
+        if (fetchAll) setLoading(false);
+      });
+  }, [apiCall]);
 
   useEffect(() => {
     if (token && user) {
-      fetchAllData();
+      fetchResources(['all']);
 
-      const socketUrl = API_URL.startsWith('http') ? API_URL.replace(/\/api\/?$/, '') : window.location.origin;
+      const socketUrl = BACKEND_ORIGIN || window.location.origin;
       const socket = io(socketUrl, {
+        auth: { token },
         transports: ['polling', 'websocket'],
         reconnectionAttempts: 5,
         timeout: 10000
       });
-      
-      // Join the team's room to receive real-time updates
-      const roomOwnerId = user.ownerId || user.parentId || user.id;
-      if (roomOwnerId) {
-        socket.emit('joinRoom', roomOwnerId);
-      }
 
-      socket.on('updateData', () => {
-        fetchAllData();
+      socket.on('updateData', (payload) => {
+        const resources = payload?.resources || ['all'];
+        fetchResources(resources);
       });
 
       return () => {
@@ -90,7 +93,7 @@ export function FinanceProvider({ children }) {
     } else {
       setLoading(false);
     }
-  }, [token, user, fetchAllData]);
+  }, [token, user, fetchResources]);
 
   // -- CARDS --
   const addCard = async (card) => {
@@ -142,12 +145,15 @@ export function FinanceProvider({ children }) {
         method: 'POST', 
         body: JSON.stringify({ ...movement, type: movement.type.toUpperCase() }) 
       });
-      setMovements([mov, ...movements]);
-      
-      const updatedCards = await apiCall('/cards');
-      setCards(updatedCards);
+      setMovements(prev => [mov, ...prev]);
+      if (mov.card) {
+        setCards(prev => prev.map(c => c.id === mov.card.id ? { ...c, ...mov.card } : c));
+      } else {
+        const updatedCards = await apiCall('/cards');
+        setCards(updatedCards);
+      }
 
-      const card = cards.find(c => c.id === movement.cardId);
+      const card = mov.card || cards.find(c => c.id === movement.cardId);
       logActivity({
         type: ACTIVITY_TYPES.MOVEMENT_ADDED,
         title: movement.type === 'income' || movement.type === 'INCOME' ? 'Income recorded' : 'Expense recorded',
@@ -158,14 +164,35 @@ export function FinanceProvider({ children }) {
   };
 
   const transferBetweenCards = async (sourceId, targetId, amount, description = 'Transferencia') => {
-    const resExp = await addMovement({ cardId: sourceId, type: 'EXPENSE', amount, description: `${description} to another account`, category: 'Transfers' });
-    if (!resExp.success) return resExp;
-    await addMovement({ cardId: targetId, type: 'INCOME', amount, description: `${description} from another account`, category: 'Transfers' });
-    
-    const src = cards.find(c => c.id === sourceId);
-    const tgt = cards.find(c => c.id === targetId);
-    logActivity({ type: ACTIVITY_TYPES.TRANSFER, title: 'Transfer completed', description: `$${Number(amount).toFixed(2)} from ${src?.name ?? '?'} to ${tgt?.name ?? '?'}` });
-    return { success: true };
+    try {
+      const res = await apiCall('/movements/transfer', {
+        method: 'POST',
+        body: JSON.stringify({
+          sourceCardId: sourceId,
+          targetCardId: targetId,
+          amount,
+          description
+        })
+      });
+      if (Array.isArray(res.movements)) {
+        setMovements(prev => [...res.movements, ...prev]);
+      }
+      if (Array.isArray(res.cards)) {
+        const cardMap = new Map(res.cards.map(c => [c.id, c]));
+        setCards(prev => prev.map(c => cardMap.get(c.id) || c));
+      }
+      const src = cards.find(c => c.id === sourceId);
+      const tgt = cards.find(c => c.id === targetId);
+      logActivity({
+        type: ACTIVITY_TYPES.TRANSFER,
+        title: 'Transfer completed',
+        description: `$${Number(amount).toFixed(2)} from ${src?.name ?? '?'} to ${tgt?.name ?? '?'}`
+      });
+      return { success: true };
+    } catch (e) {
+      console.error(e);
+      return { success: false, error: e.message };
+    }
   };
 
   const deleteMovement = async (id) => {
@@ -262,7 +289,7 @@ export function FinanceProvider({ children }) {
       return updated;
     } catch (e) {
       console.error('Error updating document:', e);
-      setDocuments(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+      throw e;
     }
   };
 
@@ -297,15 +324,19 @@ export function FinanceProvider({ children }) {
     try {
       const expense = expectedExpenses.find(e => e.id === id);
       if (!expense) return { success: false, error: 'Expected expense not found.' };
-      const movRes = await addMovement({
-        cardId, type: 'EXPENSE', amount: expense.amount, category: expense.category,
-        description: `Payment Made: ${expense.description}`,
+      const res = await apiCall(`/expected-expenses/${id}/pay`, {
+        method: 'PUT',
+        body: JSON.stringify({ cardId })
       });
-      if (movRes.success) {
-        const e = await apiCall(`/expected-expenses/${id}/pay`, { method: 'PUT' });
-        setExpectedExpenses(expectedExpenses.map(ex => ex.id === id ? e : ex));
-      }
-      return movRes;
+      setExpectedExpenses(prev => prev.map(ex => ex.id === id ? res : ex));
+      if (res.movement) setMovements(prev => [res.movement, ...prev]);
+      if (res.card) setCards(prev => prev.map(c => c.id === res.card.id ? { ...c, ...res.card } : c));
+      logActivity({
+        type: ACTIVITY_TYPES.MOVEMENT_ADDED,
+        title: 'Expense recorded',
+        description: `Payment Made: ${expense.description} — $${Number(expense.amount).toFixed(2)}`
+      });
+      return { success: true };
     } catch (e) { console.error(e); return { success: false, error: e.message }; }
   };
 
@@ -326,15 +357,19 @@ export function FinanceProvider({ children }) {
     try {
       const rec = receivables.find(r => r.id === id);
       if (!rec) return { success: false, error: 'Not found.' };
-      const movRes = await addMovement({
-        cardId, type: 'INCOME', amount: rec.amount, category: 'Accounts Receivable',
-        description: `Collection: ${rec.description}`
+      const res = await apiCall(`/receivables/${id}/collect`, {
+        method: 'PUT',
+        body: JSON.stringify({ cardId })
       });
-      if (movRes.success) {
-        const r = await apiCall(`/receivables/${id}/collect`, { method: 'PUT', body: JSON.stringify({ cardId }) });
-        setReceivables(receivables.map(item => item.id === id ? r : item));
-      }
-      return movRes;
+      setReceivables(prev => prev.map(item => item.id === id ? res : item));
+      if (res.movement) setMovements(prev => [res.movement, ...prev]);
+      if (res.card) setCards(prev => prev.map(c => c.id === res.card.id ? { ...c, ...res.card } : c));
+      logActivity({
+        type: ACTIVITY_TYPES.MOVEMENT_ADDED,
+        title: 'Income recorded',
+        description: `Collection: ${rec.description || rec.clientName} — $${Number(rec.amount).toFixed(2)}`
+      });
+      return { success: true };
     } catch (e) { console.error(e); return { success: false, error: e.message }; }
   };
 
@@ -355,15 +390,19 @@ export function FinanceProvider({ children }) {
     try {
       const pay = payables.find(p => p.id === id);
       if (!pay) return { success: false, error: 'Not found.' };
-      const movRes = await addMovement({
-        cardId, type: 'EXPENSE', amount: pay.amount, category: 'Accounts Payable',
-        description: `Payment: ${pay.description}`
+      const res = await apiCall(`/payables/${id}/pay`, {
+        method: 'PUT',
+        body: JSON.stringify({ cardId })
       });
-      if (movRes.success) {
-        const p = await apiCall(`/payables/${id}/pay`, { method: 'PUT', body: JSON.stringify({ cardId }) });
-        setPayables(payables.map(item => item.id === id ? p : item));
-      }
-      return movRes;
+      setPayables(prev => prev.map(item => item.id === id ? res : item));
+      if (res.movement) setMovements(prev => [res.movement, ...prev]);
+      if (res.card) setCards(prev => prev.map(c => c.id === res.card.id ? { ...c, ...res.card } : c));
+      logActivity({
+        type: ACTIVITY_TYPES.MOVEMENT_ADDED,
+        title: 'Expense recorded',
+        description: `Payment: ${pay.description || pay.providerName} — $${Number(pay.amount).toFixed(2)}`
+      });
+      return { success: true };
     } catch (e) { console.error(e); return { success: false, error: e.message }; }
   };
 
